@@ -220,3 +220,4 @@ __marimo__/
 # internal
 CLAUDE.md
 *:Zone.Identifier
+reports/*.json
