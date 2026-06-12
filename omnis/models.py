@@ -210,6 +210,18 @@ class IntegrityFinding(BaseModel):
         return v
 
 
+class Prediction(BaseModel):
+    """One detector's call on a single evidence record.
+
+    Every prediction is explainable: the anomaly class, a human-readable reason
+    for why the rule fired, and the detector's self-assessed confidence (0..1).
+    """
+
+    anomaly_class: str
+    reason: str
+    confidence: float
+
+
 class EvalResult(BaseModel):
     """Metrics for one detector run, binary plus per-class."""
 

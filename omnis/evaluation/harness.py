@@ -21,7 +21,7 @@ from typing import Protocol
 
 import pandas as pd
 
-from omnis.models import EvalResult, EvidenceRecord
+from omnis.models import EvalResult, EvidenceRecord, Prediction
 
 NEGATIVE = "NONE"
 
@@ -29,7 +29,7 @@ NEGATIVE = "NONE"
 class Detector(Protocol):
     name: str
 
-    def predict(self, record: EvidenceRecord) -> str | None: ...
+    def predict(self, record: EvidenceRecord) -> Prediction | None: ...
 
 
 def _safe_div(numerator: float, denominator: float) -> float:
@@ -89,7 +89,8 @@ def evaluate(
 
     for record in records:
         truth = _truth_label(record, overrides)
-        pred = detector.predict(record)
+        prediction = detector.predict(record)
+        pred = prediction.anomaly_class if prediction is not None else None
 
         truth_pos = truth is not None
         pred_pos = pred is not None

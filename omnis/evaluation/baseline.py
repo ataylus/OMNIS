@@ -9,7 +9,7 @@ measure improvements against.
 
 from __future__ import annotations
 
-from omnis.models import EvidenceRecord
+from omnis.models import EvidenceRecord, Prediction
 
 STALE_THRESHOLD_DAYS = 90
 
@@ -19,7 +19,11 @@ class BaselineDetector:
 
     name = "baseline_freshness>90"
 
-    def predict(self, record: EvidenceRecord) -> str | None:
+    def predict(self, record: EvidenceRecord) -> Prediction | None:
         if record.freshness_days is not None and record.freshness_days > STALE_THRESHOLD_DAYS:
-            return "STALE_EVIDENCE"
+            return Prediction(
+                anomaly_class="STALE_EVIDENCE",
+                reason=f"freshness_days {record.freshness_days} > {STALE_THRESHOLD_DAYS}",
+                confidence=0.5,
+            )
         return None

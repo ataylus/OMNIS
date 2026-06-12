@@ -13,12 +13,13 @@ from __future__ import annotations
 from collections import Counter
 from datetime import date
 
+from omnis.freshness import REFERENCE_DATE
 from omnis.models import EvidenceRecord, IntegrityFinding, Requirement
 
-# Single audit "as of" date, used by the freshness consistency check (and reused
-# by the freshness model in a later block). Fixed, not wall-clock, so results are
-# deterministic. Chosen to match the problem statement's example generated date.
-REFERENCE_DATE = date(2026, 4, 15)
+# REFERENCE_DATE is defined once in omnis.freshness (the audit "as of" date) and
+# reused here so the integrity auditor and the freshness model never drift apart.
+# Re-exported through this module for backward compatibility.
+__all__ = ["REFERENCE_DATE", "audit_corpus"]
 
 # How many affected ids to embed in a finding before truncating.
 SAMPLE_CAP = 10
