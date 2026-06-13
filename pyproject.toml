@@ -30,7 +30,11 @@ packages = [
     "omnis.scoring",
     "omnis.narrative",
     "omnis.report",
+    "omnis.dashboard",
 ]
+
+[tool.setuptools.package-data]
+"omnis.dashboard" = ["static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

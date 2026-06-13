@@ -1,7 +1,7 @@
 # OMNIS developer targets. Everything runs offline, no API keys.
 PYTHON ?= python3
 
-.PHONY: test eval run score report synth analyze
+.PHONY: test eval run score report serve synth analyze
 
 test:
 	$(PYTHON) -m pytest
@@ -17,6 +17,9 @@ score:
 
 report:
 	$(PYTHON) -m omnis report --bench sample
+
+serve:
+	$(PYTHON) -m omnis serve --port 8000
 
 synth:
 	$(PYTHON) -m omnis synth --out data/synthetic

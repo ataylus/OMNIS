@@ -5,6 +5,7 @@ Everything runs headless and offline:
   python -m omnis eval [opts]          score detectors on both benches
   python -m omnis score [opts]         map evidence + score compliance, both benches
   python -m omnis report [opts]        write an auditor-ready JSON + PDF report
+  python -m omnis serve [opts]         serve the single-page dashboard locally
   python -m omnis synth [opts]         (re)generate the synthetic bench
 
 `eval` scores the baseline and the rule detector on two benches side by side.
@@ -28,6 +29,7 @@ from omnis.evaluation import (
 from omnis.evaluation.harness import Detector
 from omnis.ingest import parse_policies
 from omnis.integrity import audit_corpus
+from omnis.dashboard import build_dashboard_data, serve, write_static
 from omnis.mapping import map_evidence
 from omnis.models import EvalResult, load_evidence
 from omnis.report import build_report, write_report
@@ -195,6 +197,18 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    if args.write:
+        data = build_dashboard_data(args.policies)
+        html_path, json_path = write_static(data, args.write, initial_bench=args.bench)
+        print(f"Wrote self-contained dashboard to {html_path}")
+        print(f"Wrote static payload to {json_path}")
+        print(f"Open {html_path} directly in a browser (no server needed).")
+        return 0
+    serve(port=args.port, initial_bench=args.bench, policies=args.policies)
+    return 0
+
+
 def _cmd_synth(args: argparse.Namespace) -> int:
     bench = materialize(args.out, n=args.n, seed=args.seed)
     pos = sum(1 for r in bench.records if r.anomaly_marker)
@@ -297,6 +311,25 @@ def build_parser() -> argparse.ArgumentParser:
     report_p.add_argument("--policies", type=Path, default=DEFAULT_POLICIES)
     report_p.add_argument("--out", type=Path, default=Path("reports"))
     report_p.set_defaults(func=_cmd_report)
+
+    serve_p = sub.add_parser(
+        "serve",
+        help="serve the single-page dashboard locally",
+        description=(
+            "Build the dashboard payload (mapping + scoring + narratives + integrity) "
+            "and serve a single page at http://127.0.0.1:PORT with a JSON endpoint at "
+            "/api/payload. Both benches load with a toggle. Use --write DIR to emit a "
+            "self-contained index.html + dashboard_data.json that opens with no server "
+            "(handy for screenshots). Runs offline, no API key."
+        ),
+    )
+    serve_p.add_argument("--port", type=int, default=8000)
+    serve_p.add_argument("--bench", choices=["sample", "synthetic"], default="sample",
+                         help="which bench is shown first (both are available via the toggle)")
+    serve_p.add_argument("--policies", type=Path, default=DEFAULT_POLICIES)
+    serve_p.add_argument("--write", type=Path, default=None,
+                         help="write a static, self-contained dashboard to this directory instead of serving")
+    serve_p.set_defaults(func=_cmd_serve)
 
     synth_p = sub.add_parser("synth", help="(re)generate the synthetic bench")
     synth_p.add_argument("--out", type=Path, default=SYNTHETIC_DIR)
