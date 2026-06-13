@@ -32,12 +32,18 @@ from pathlib import Path
 
 from omnis.detect.rules import LOW_CONFIDENCE_THRESHOLD, RuleBasedDetector
 from omnis.freshness import DEFAULT_WINDOW_DAYS, REFERENCE_DATE
+from omnis.ingest import parse_policies
 from omnis.models import EVIDENCE_COLUMNS, EvidenceRecord, load_evidence
 
 DEFAULT_N = 500
 DEFAULT_SEED = 20260614
 NOISE_RATE = 0.05
-N_VALID_REQUIREMENTS = 50
+
+# The synthetic bench references the SAME 9 requirement ids parsed from the real
+# policy file, so mapping and scoring tell one coherent story across both benches
+# (exact-id mapping works on the synthetic bench; INCOMPLETE_MAPPING rows use
+# ORPHAN-* ids that match no requirement, as before).
+DEFAULT_POLICY_PATH = "data/sample/policy_documents.txt"
 
 FRAMEWORKS = ["GDPR", "SOX", "NIST", "PCI-DSS", "ISO27001", "HIPAA"]
 EVIDENCE_TYPES = [
@@ -73,8 +79,8 @@ class SyntheticBench:
     scenario_counts: dict[str, int] = field(default_factory=dict)
 
 
-def _valid_ids() -> list[str]:
-    return [f"SYN-REQ-{i:03d}" for i in range(1, N_VALID_REQUIREMENTS + 1)]
+def _valid_ids(policy_path: str = DEFAULT_POLICY_PATH) -> list[str]:
+    return [req.id for req in parse_policies(policy_path)]
 
 
 def _oracle_label(row: dict, valid_ids: set[str]) -> str | None:
@@ -156,10 +162,18 @@ def _scenarios(rng: random.Random, n: int) -> list[str]:
     return rng.choices(names, weights=weights, k=n)
 
 
-def generate_synthetic(n: int = DEFAULT_N, seed: int = DEFAULT_SEED) -> SyntheticBench:
-    """Generate a deterministic synthetic bench of `n` records."""
+def generate_synthetic(
+    n: int = DEFAULT_N,
+    seed: int = DEFAULT_SEED,
+    valid_requirement_ids: list[str] | None = None,
+) -> SyntheticBench:
+    """Generate a deterministic synthetic bench of `n` records.
+
+    Mappable rows reference `valid_requirement_ids` (defaults to the 9 ids parsed
+    from the real policy file); INCOMPLETE_MAPPING rows reference ORPHAN-* ids.
+    """
     rng = random.Random(seed)
-    valid_ids = _valid_ids()
+    valid_ids = list(valid_requirement_ids) if valid_requirement_ids else _valid_ids()
     valid_set = set(valid_ids)
     scenario_counts: dict[str, int] = {}
     noise_count = 0
@@ -289,7 +303,9 @@ handling. It does not prove the rules are correct in the real world.
 ## Generation rules (per scenario)
 
 Age uses the authoritative `freshness_days` field. Window = {DEFAULT_WINDOW_DAYS} days,
-low-confidence threshold = {LOW_CONFIDENCE_THRESHOLD}.
+low-confidence threshold = {LOW_CONFIDENCE_THRESHOLD}. Mappable rows reference the 9
+requirement ids parsed from the real policy file (so mapping/scoring work across
+both benches); INCOMPLETE_MAPPING rows reference ORPHAN-* ids.
 
 - clean: Approved, age < {DEFAULT_WINDOW_DAYS}, confidence >= {LOW_CONFIDENCE_THRESHOLD}, mappable -> no anomaly.
 - clean_old_approved (exception): Approved, age > {DEFAULT_WINDOW_DAYS} -> NOT stale (recent approval exempts).

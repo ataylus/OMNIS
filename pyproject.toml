@@ -24,6 +24,8 @@ packages = [
     "omnis.freshness",
     "omnis.detect",
     "omnis.synthesis",
+    "omnis.mapping",
+    "omnis.scoring",
 ]
 
 [tool.pytest.ini_options]

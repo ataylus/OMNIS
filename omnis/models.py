@@ -222,6 +222,44 @@ class Prediction(BaseModel):
     confidence: float
 
 
+class EvidenceLink(BaseModel):
+    """A link from one evidence record to a requirement (or UNMAPPED).
+
+    `method` records which mapping layer produced the link (exact_id,
+    framework_rule, tfidf, or unmapped) so a report can show how each link was
+    made. When `mapped` is False the record reached the similarity floor without
+    a confident match; that is a reportable outcome, not an error.
+    """
+
+    evidence_id: str
+    requirement_id: str | None
+    method: str
+    confidence: float
+    mapped: bool
+
+
+class RequirementScore(BaseModel):
+    """Compliance status for one requirement, with evidence and a plain reason."""
+
+    requirement_id: str
+    status: str  # COMPLIANT | PARTIAL | GAP | UNKNOWN
+    confidence: float
+    evidence_ids: list[str] = []
+    rationale: str = ""
+
+
+class ComplianceSummary(BaseModel):
+    """Roll-up across all requirements for one bench."""
+
+    omniscience_index: float
+    automation_rate: float
+    total_requirements: int
+    total_evidence: int
+    unmapped_count: int
+    status_breakdown: dict[str, int] = {}
+    method_breakdown: dict[str, int] = {}
+
+
 class EvalResult(BaseModel):
     """Metrics for one detector run, binary plus per-class."""
 

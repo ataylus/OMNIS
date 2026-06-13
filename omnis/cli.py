@@ -1,14 +1,15 @@
 """Command line interface for OMNIS.
 
 Everything runs headless and offline:
-  python -m omnis run                 parse policies + audit the evidence corpus
+  python -m omnis run                 parse policies + audit + one-line score summary
   python -m omnis eval [opts]          score detectors on both benches
+  python -m omnis score [opts]         map evidence + score compliance, both benches
   python -m omnis synth [opts]         (re)generate the synthetic bench
 
-`eval` scores the baseline and the rule detector on two benches side by side:
-the provided sample (in-band markers, which appear independent of features) and
-the synthetic bench (labels by construction, where the precision/recall bar
-applies). Block 2 wires up freshness, detection, and synthesis.
+`eval` scores the baseline and the rule detector on two benches side by side.
+`score` maps evidence to requirements and derives per-requirement compliance
+status, the Omniscience Index, and the Automation Rate. Block 3 adds mapping and
+scoring.
 """
 
 from __future__ import annotations
@@ -22,12 +23,13 @@ from omnis.evaluation import (
     evaluate,
     format_result,
     load_label_overrides,
-    save_result,
 )
 from omnis.evaluation.harness import Detector
 from omnis.ingest import parse_policies
 from omnis.integrity import audit_corpus
+from omnis.mapping import map_evidence
 from omnis.models import EvalResult, load_evidence
+from omnis.scoring import score_corpus
 from omnis.synthesis import load_synthetic_bench, materialize
 
 DEFAULT_POLICIES = Path("data/sample/policy_documents.txt")
@@ -57,6 +59,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
         sample = f", sample: {', '.join(f.affected_ids)}" if f.affected_ids else ""
         print(f"  [{f.severity:<6}] {f.check_name} (count={f.affected_count}){sample}")
         print(f"           {f.description}")
+    print()
+    links = map_evidence(records, requirements)
+    scores, summary = score_corpus(requirements, records, links)
+    print(
+        f"Score summary: Omniscience Index {summary.omniscience_index}/100, "
+        f"Automation Rate {summary.automation_rate}%, "
+        f"unmapped {summary.unmapped_count}/{summary.total_evidence}, "
+        f"statuses {summary.status_breakdown}"
+    )
     return 0
 
 
@@ -163,6 +174,62 @@ def _cmd_synth(args: argparse.Namespace) -> int:
     return 0
 
 
+DEFAULT_SCORE_OUT = Path("reports/score_latest.json")
+
+
+def _score_bench(
+    title: str, requirements, records, links_summary_out: dict, key: str
+) -> None:
+    links = map_evidence(records, requirements)
+    scores, summary = score_corpus(requirements, records, links)
+    print(f"=== {title} ===")
+    print(
+        f"  Omniscience Index: {summary.omniscience_index}/100    "
+        f"Automation Rate: {summary.automation_rate}%"
+    )
+    print(
+        f"  Evidence: {summary.total_evidence}   Unmapped: {summary.unmapped_count}   "
+        f"Mapping methods: {summary.method_breakdown}"
+    )
+    print(f"  Status breakdown: {summary.status_breakdown}")
+    print()
+    print(f"  {'requirement':<16}{'status':<11}{'conf':>6}  {'evid':>5}  rationale")
+    print("  " + "-" * 92)
+    for s in scores:
+        print(
+            f"  {s.requirement_id:<16}{s.status:<11}{s.confidence:>6.3f}  "
+            f"{len(s.evidence_ids):>5}  {s.rationale}"
+        )
+    print()
+    links_summary_out[key] = {
+        "summary": summary.model_dump(),
+        "requirements": [s.model_dump() for s in scores],
+    }
+
+
+def _cmd_score(args: argparse.Namespace) -> int:
+    requirements = parse_policies(args.policies)
+    payload: dict = {}
+
+    sample_records = load_evidence(args.evidence)
+    _score_bench(
+        f"Provided sample ({args.evidence})", requirements, sample_records, payload, "provided_sample"
+    )
+
+    if SYNTHETIC_CSV.exists() and SYNTHETIC_IDS.exists():
+        syn_records, _ = load_synthetic_bench(SYNTHETIC_CSV, SYNTHETIC_IDS)
+        _score_bench(
+            f"Synthetic bench ({SYNTHETIC_CSV})", requirements, syn_records, payload, "synthetic"
+        )
+    else:
+        print("Synthetic bench not found. Generate it with: python -m omnis synth")
+        print()
+
+    save_result_payload(payload, args.out)
+    print(f"Saved score payload to {args.out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="omnis", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -186,6 +253,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_p.add_argument("--out", type=Path, default=DEFAULT_EVAL_OUT)
     eval_p.set_defaults(func=_cmd_eval)
+
+    score_p = sub.add_parser("score", help="map evidence + score compliance, both benches")
+    score_p.add_argument("--evidence", type=Path, default=DEFAULT_EVIDENCE)
+    score_p.add_argument("--policies", type=Path, default=DEFAULT_POLICIES)
+    score_p.add_argument("--out", type=Path, default=DEFAULT_SCORE_OUT)
+    score_p.set_defaults(func=_cmd_score)
 
     synth_p = sub.add_parser("synth", help="(re)generate the synthetic bench")
     synth_p.add_argument("--out", type=Path, default=SYNTHETIC_DIR)

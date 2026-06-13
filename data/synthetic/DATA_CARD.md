@@ -28,7 +28,9 @@ handling. It does not prove the rules are correct in the real world.
 ## Generation rules (per scenario)
 
 Age uses the authoritative `freshness_days` field. Window = 90 days,
-low-confidence threshold = 0.6.
+low-confidence threshold = 0.6. Mappable rows reference the 9
+requirement ids parsed from the real policy file (so mapping/scoring work across
+both benches); INCOMPLETE_MAPPING rows reference ORPHAN-* ids.
 
 - clean: Approved, age < 90, confidence >= 0.6, mappable -> no anomaly.
 - clean_old_approved (exception): Approved, age > 90 -> NOT stale (recent approval exempts).
@@ -44,7 +46,7 @@ features (the "oracle"), so boundary rows are labeled by the strict rule.
 ## Injected realism
 
 - Label noise: 5% of rows have their marker corrupted while features
-  are left intact (28 rows in this build). Clean rows become a
+  are left intact (16 rows in this build). Clean rows become a
   random anomaly class (false negatives for the detector); anomalous rows become
   blank (false positives). This caps achievable precision/recall below 1.0.
 - Boundary cases: 15% of rows place the deciding feature next to its
@@ -53,7 +55,7 @@ features (the "oracle"), so boundary rows are labeled by the strict rule.
 
 ## Composition (this build)
 
-Rows: 500. Anomalous: 248. Clean: 252. Injected noise rows: 28.
+Rows: 500. Anomalous: 257. Clean: 243. Injected noise rows: 16.
 
 | scenario | count |
 |---|---|
@@ -67,8 +69,8 @@ Rows: 500. Anomalous: 248. Clean: 252. Injected noise rows: 28.
 
 | anomaly_marker (post-noise) | count |
 |---|---|
-| COMPLIANCE_GAP | 68 |
+| COMPLIANCE_GAP | 69 |
 | INCOMPLETE_MAPPING | 51 |
-| MISSING_DOCUMENTATION | 41 |
-| STALE_EVIDENCE | 39 |
-| UNREVIEWED_EVIDENCE | 49 |
+| MISSING_DOCUMENTATION | 45 |
+| STALE_EVIDENCE | 40 |
+| UNREVIEWED_EVIDENCE | 52 |
