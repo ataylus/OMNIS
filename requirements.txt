@@ -3,3 +3,4 @@ pydantic==2.13.4
 pytest==8.4.2
 numpy==2.4.3
 fpdf2==2.8.7
+matplotlib==3.10.8

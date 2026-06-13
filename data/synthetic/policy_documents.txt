@@ -1,0 +1,150 @@
+POLICY: Data Encryption and Protection
+POLICY_ID: POL-ENC-001
+VERSION: 2.1
+STATUS: Active
+LAST_UPDATED: 2026-03-15
+
+REQUIREMENT 1: All data at rest must be encrypted using AES-256 or stronger
+- Responsible: Infrastructure Security
+- Scope: Databases, file storage, backups
+- Evidence Source: AWS KMS Configuration, Database Settings
+- Audit Frequency: Monthly
+- Compliance Mapping: GDPR Article 32, NIST SC-7, PCI-DSS 3.4
+
+REQUIREMENT 2: Encryption keys must be rotated at least annually
+- Responsible: Key Management Team
+- scope: All encryption keys
+- Evidence Source: Key Management System Audit Logs
+- Audit Frequency: Quarterly
+- Compliance Mapping: NIST SC-7, ISO 27001 A.10.1.1
+
+REQUIREMENT 3: Data in transit must use TLS 1.2 or higher
+- Responsible: Network Security
+- Scope: All network communications involving sensitive data
+- Evidence Source: Network Configuration, SSL Certificate Inventory
+- Audit Frequency: Continuous
+- Compliance Mapping: GDPR Article 32, NIST SC-7
+
+---
+
+POLICY: Access Control and Identity Management
+POLICY_ID: POL-AC-001
+VERSION: 3.0
+STATUS: Active
+LAST_UPDATED: 2026-02-01
+
+REQUIREMENT 1: Administrative access requires multi-factor authentication
+- Responsible: IT Operations
+- Scope: All administrative accounts
+- Evidence Source: Azure AD Configuration, Login Logs
+- Audit Frequency: Daily
+- Compliance Mapping: NIST IA-2, CIS 5.3.1
+
+REQUIREMENT 2: Access must follow principle of least privilege
+- Responsible: Access Control Board
+- Scope: All user access rights
+- Evidence Source: IAM Systems, Access Reviews
+- Audit Frequency: Quarterly
+- Compliance Mapping: NIST AC-2, NIST AC-3, SOX 302
+
+REQUIREMENT 3: Privileged accounts must have no personal use
+- Responsible: Security Operations
+- Scope: Admin, root, service accounts
+- Evidence Source: Activity Logs, Browser History (if applicable)
+- Audit Frequency: Monthly
+- Compliance Mapping: NIST AC-3, CIS 4.1
+
+---
+
+POLICY: Audit Logging and Monitoring
+POLICY_ID: POL-AUD-001
+VERSION: 2.5
+STATUS: Active
+LAST_UPDATED: 2026-01-30
+
+REQUIREMENT 1: All access to sensitive data must be logged
+- Responsible: Security Operations
+- Scope: Databases, file systems, APIs
+- Evidence Source: Application Logs, Database Audit Trails
+- Audit Frequency: Daily
+- Compliance Mapping: GDPR Article 32, NIST AU-2, SOX 302
+
+REQUIREMENT 2: Logs must be retained for minimum 90 days
+- Responsible: Log Management Team
+- Scope: All security-relevant logs
+- Evidence Source: Log Storage Configuration, Retention Policies
+- Audit Frequency: Monthly
+- Compliance Mapping: NIST AU-4, PCI-DSS 3.4
+
+REQUIREMENT 3: Log access must be restricted and monitored
+- Responsible: Security Operations
+- Scope: All log files and systems
+- Evidence Source: Access Control Lists, Log Access Logs
+- Audit Frequency: Weekly
+- Compliance Mapping: NIST AU-5, ISO 27001 A.10.2.3
+
+---
+
+POLICY: Financial Reporting Controls
+POLICY_ID: POL-SOX-001
+VERSION: 1.4
+STATUS: Active
+LAST_UPDATED: 2026-02-20
+
+REQUIREMENT 1: Changes to financial reporting systems must follow documented change management with segregation of duties
+- Responsible: Financial Systems Governance
+- Scope: General ledger, consolidation, reporting pipelines
+- Evidence Source: Change Management Records, Approval Workflows
+- Audit Frequency: Monthly
+- Compliance Mapping: SOX 404, NIST CM-3, ISO 27001 A.12.1.2
+
+REQUIREMENT 2: Access to financial data must be reviewed and certified each quarter
+- Responsible: Internal Controls Office
+- Scope: All users with access to financial reporting data
+- Evidence Source: Access Certification Reports, IAM Systems
+- Audit Frequency: Quarterly
+- Compliance Mapping: SOX 404, NIST AC-2
+
+---
+
+POLICY: Protected Health Information Safeguards
+POLICY_ID: POL-HIPAA-001
+VERSION: 1.2
+STATUS: Active
+LAST_UPDATED: 2026-03-01
+
+REQUIREMENT 1: Protected health information must be encrypted at rest and in transit
+- Responsible: Healthcare Data Security
+- Scope: PHI in databases, backups, and network transfers
+- Evidence Source: Encryption Configuration, KMS Audit Logs
+- Audit Frequency: Monthly
+- Compliance Mapping: HIPAA 164.312(a)(2)(iv), NIST SC-7
+
+REQUIREMENT 2: Access to protected health information must be logged with audit controls
+- Responsible: Healthcare Security Operations
+- Scope: All systems storing or processing PHI
+- Evidence Source: Audit Logs, Access Monitoring
+- Audit Frequency: Daily
+- Compliance Mapping: HIPAA 164.312(b), NIST AU-2
+
+---
+
+POLICY: Cardholder Data Protection
+POLICY_ID: POL-PCI-001
+VERSION: 2.0
+STATUS: Active
+LAST_UPDATED: 2026-01-15
+
+REQUIREMENT 1: Cardholder data must be stored only when necessary and rendered unreadable wherever it is kept
+- Responsible: Payment Security
+- Scope: Cardholder data environment, payment databases
+- Evidence Source: Data Retention Configuration, Encryption Settings
+- Audit Frequency: Quarterly
+- Compliance Mapping: PCI-DSS 3.4, NIST SC-7
+
+REQUIREMENT 2: Network access to the cardholder data environment must be restricted by firewall rules
+- Responsible: Network Security
+- Scope: All network segments in the cardholder data environment
+- Evidence Source: Firewall Configuration, Network Segmentation Reviews
+- Audit Frequency: Weekly
+- Compliance Mapping: PCI-DSS 1.2, NIST SC-7

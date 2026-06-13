@@ -34,7 +34,7 @@ from omnis.mapping import map_evidence
 from omnis.models import EvalResult, load_evidence
 from omnis.report import build_report, write_report
 from omnis.scoring import score_corpus
-from omnis.synthesis import load_synthetic_bench, materialize
+from omnis.synthesis import generate_synthetic, load_synthetic_bench, materialize
 
 DEFAULT_POLICIES = Path("data/sample/policy_documents.txt")
 DEFAULT_EVIDENCE = Path("data/sample/evidence_artifacts.csv")
@@ -42,6 +42,10 @@ DEFAULT_EVAL_OUT = Path("reports/eval_latest.json")
 SYNTHETIC_DIR = Path("data/synthetic")
 SYNTHETIC_CSV = SYNTHETIC_DIR / "evidence_artifacts.csv"
 SYNTHETIC_IDS = SYNTHETIC_DIR / "valid_requirement_ids.txt"
+# The synthetic bench is scored against its own 6-policy / 15-requirement set
+# (the 3 provided policies plus SOX, HIPAA, PCI-DSS). The provided sample bench
+# always uses the 3-policy / 9-requirement file at DEFAULT_POLICIES.
+SYNTHETIC_POLICIES = SYNTHETIC_DIR / "policy_documents.txt"
 
 # The bar from the problem statement, applied to the synthetic bench.
 BAR_PRECISION = 0.70
@@ -169,14 +173,16 @@ def save_result_payload(payload: dict, path: str | Path) -> None:
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
-    requirements = parse_policies(args.policies)
     if args.bench == "synthetic":
         if not (SYNTHETIC_CSV.exists() and SYNTHETIC_IDS.exists()):
             print("Synthetic bench not found. Generate it with: python -m omnis synth")
             return 1
+        # The synthetic bench carries the full 6-policy / 15-requirement scope.
+        requirements = parse_policies(SYNTHETIC_POLICIES)
         records, _ = load_synthetic_bench(SYNTHETIC_CSV, SYNTHETIC_IDS)
         bench_label = "synthetic"
     else:
+        requirements = parse_policies(args.policies)
         records = load_evidence(args.evidence)
         bench_label = "provided sample"
 
@@ -262,9 +268,10 @@ def _cmd_score(args: argparse.Namespace) -> int:
     )
 
     if SYNTHETIC_CSV.exists() and SYNTHETIC_IDS.exists():
+        syn_requirements = parse_policies(SYNTHETIC_POLICIES)
         syn_records, _ = load_synthetic_bench(SYNTHETIC_CSV, SYNTHETIC_IDS)
         _score_bench(
-            f"Synthetic bench ({SYNTHETIC_CSV})", requirements, syn_records, payload, "synthetic"
+            f"Synthetic bench ({SYNTHETIC_CSV})", syn_requirements, syn_records, payload, "synthetic"
         )
     else:
         print("Synthetic bench not found. Generate it with: python -m omnis synth")
@@ -273,6 +280,55 @@ def _cmd_score(args: argparse.Namespace) -> int:
     save_result_payload(payload, args.out)
     print(f"Saved score payload to {args.out}")
     return 0
+
+
+def _cmd_perf(args: argparse.Namespace) -> int:
+    """Time the full offline pipeline on a large generated corpus.
+
+    Generates `--n` synthetic evidence rows in memory (default 5000), then times
+    the four pipeline stages that the rubric's performance criterion covers:
+    parse policies, map evidence to requirements, score compliance, audit corpus
+    integrity. Generation is setup and is timed separately, not counted in the
+    pipeline number. Everything runs offline with the LLM adapter off.
+    """
+    import time
+
+    print(f"Performance run: generating {args.n} synthetic evidence rows (seed {args.seed})...")
+    gen_start = time.perf_counter()
+    bench = generate_synthetic(n=args.n, seed=args.seed)
+    records = bench.records
+    gen_secs = time.perf_counter() - gen_start
+    print(f"  generated {len(records)} rows in {gen_secs:.2f}s (setup, not counted)")
+    print()
+
+    stage_secs: dict[str, float] = {}
+
+    t0 = time.perf_counter()
+    requirements = parse_policies(args.policies)
+    stage_secs["parse"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    links = map_evidence(records, requirements)
+    stage_secs["map"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    score_corpus(requirements, records, links)
+    stage_secs["score"] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    audit_corpus(records, requirements)
+    stage_secs["integrity"] = time.perf_counter() - t0
+
+    total = sum(stage_secs.values())
+    bar = 60.0
+    print(f"Pipeline on {len(requirements)} requirements + {len(records)} evidence rows (LLM off):")
+    for stage in ("parse", "map", "score", "integrity"):
+        print(f"  {stage:<10}{stage_secs[stage]:>8.3f}s")
+    print(f"  {'TOTAL':<10}{total:>8.3f}s")
+    print()
+    verdict = "PASS" if total < bar else "FAIL"
+    print(f"  Bar: full pipeline < {bar:.0f}s. Measured {total:.3f}s -> {verdict}")
+    return 0 if total < bar else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -336,6 +392,20 @@ def build_parser() -> argparse.ArgumentParser:
     synth_p.add_argument("--n", type=int, default=500)
     synth_p.add_argument("--seed", type=int, default=20260614)
     synth_p.set_defaults(func=_cmd_synth)
+
+    perf_p = sub.add_parser(
+        "perf",
+        help="time the full pipeline on a large generated corpus",
+        description=(
+            "Generate a large synthetic corpus in memory and time the pipeline "
+            "(parse + map + score + integrity) against the <60s scale bar. Runs "
+            "offline, writes nothing, needs no API key."
+        ),
+    )
+    perf_p.add_argument("--n", type=int, default=5000, help="evidence rows to generate (default 5000)")
+    perf_p.add_argument("--seed", type=int, default=20260614)
+    perf_p.add_argument("--policies", type=Path, default=SYNTHETIC_POLICIES)
+    perf_p.set_defaults(func=_cmd_perf)
 
     return parser
 

@@ -23,6 +23,8 @@ DEFAULT_POLICIES = Path("data/sample/policy_documents.txt")
 DEFAULT_EVIDENCE = Path("data/sample/evidence_artifacts.csv")
 SYNTHETIC_CSV = Path("data/synthetic/evidence_artifacts.csv")
 SYNTHETIC_IDS = Path("data/synthetic/valid_requirement_ids.txt")
+# The synthetic bench has its own 6-policy / 15-requirement scope.
+SYNTHETIC_POLICIES = Path("data/synthetic/policy_documents.txt")
 
 # Query words that select a status, mapped to the canonical status. Anything else
 # in the query is treated as a free-text term.
@@ -116,8 +118,9 @@ def build_dashboard_data(policies: Path = DEFAULT_POLICIES) -> dict:
     sample_records = load_evidence_safe(DEFAULT_EVIDENCE)
     data = {"sample": build_payload("provided sample", requirements, sample_records)}
     if SYNTHETIC_CSV.exists() and SYNTHETIC_IDS.exists():
+        syn_requirements = parse_policies(SYNTHETIC_POLICIES)
         syn_records, _ = load_synthetic_bench(SYNTHETIC_CSV, SYNTHETIC_IDS)
-        data["synthetic"] = build_payload("synthetic", requirements, syn_records)
+        data["synthetic"] = build_payload("synthetic", syn_requirements, syn_records)
     else:
         data["synthetic"] = None
     return data

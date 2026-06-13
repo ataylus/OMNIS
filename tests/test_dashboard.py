@@ -9,12 +9,15 @@ from omnis.dashboard.server import render_page
 def test_build_dashboard_data_both_benches():
     data = build_dashboard_data()
     assert "sample" in data and "synthetic" in data
+    # The provided sample carries 3 policies / 9 requirements; the synthetic
+    # bench carries the fuller 6-policy / 15-requirement scope.
+    expected_requirements = {"sample": 9, "synthetic": 15}
     for bench in ("sample", "synthetic"):
         p = data[bench]
         assert p is not None, f"{bench} payload missing"
         for key in ("bench", "generated", "summary", "requirements", "integrity_findings"):
             assert key in p
-        assert len(p["requirements"]) == 9
+        assert len(p["requirements"]) == expected_requirements[bench]
         for key in ("omniscience_index", "automation_rate", "total_evidence", "status_breakdown"):
             assert key in p["summary"]
         first = p["requirements"][0]

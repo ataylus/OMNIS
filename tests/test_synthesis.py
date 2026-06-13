@@ -12,6 +12,42 @@ from omnis.synthesis import DEFAULT_SEED, generate_synthetic
 
 SAMPLE = Path("data/sample/evidence_artifacts.csv")
 POLICIES = Path("data/sample/policy_documents.txt")
+SYNTHETIC_POLICIES = Path("data/synthetic/policy_documents.txt")
+
+
+# --- synthetic policy scope ---
+
+def test_synthetic_policy_file_has_six_policies_and_fifteen_requirements():
+    """The synthetic side restores the advertised 6-framework enterprise scope.
+
+    Three provided policies (verbatim) plus SOX, HIPAA, PCI-DSS, parsed by the
+    same structural parser, so the report and dashboard show 12-15 requirements.
+    """
+    reqs = parse_policies(SYNTHETIC_POLICIES)
+    assert len(reqs) == 15
+    policies = {r.policy_id for r in reqs}
+    assert policies == {
+        "POL-ENC-001", "POL-AC-001", "POL-AUD-001",
+        "POL-SOX-001", "POL-HIPAA-001", "POL-PCI-001",
+    }
+    # The 3 provided policies are carried verbatim, so their 9 ids survive.
+    for rid in ("POL-ENC-001-R1", "POL-AC-001-R2", "POL-AUD-001-R3"):
+        assert rid in {r.id for r in reqs}
+
+
+def test_generator_references_the_full_synthetic_requirement_set():
+    """Mappable rows reference the 15 synthetic requirement ids, not just 9."""
+    syn_ids = {r.id for r in parse_policies(SYNTHETIC_POLICIES)}
+    bench = generate_synthetic(500, seed=DEFAULT_SEED)
+    assert bench.valid_requirement_ids == syn_ids
+    mappable = {
+        r.requirement_id for r in bench.records
+        if r.requirement_id in bench.valid_requirement_ids
+    }
+    # Rows land on the added policies too, not only the original three.
+    assert any(rid.startswith("POL-SOX-001") for rid in mappable)
+    assert any(rid.startswith("POL-HIPAA-001") for rid in mappable)
+    assert any(rid.startswith("POL-PCI-001") for rid in mappable)
 
 
 # --- generator properties ---
