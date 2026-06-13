@@ -99,6 +99,23 @@ def _trust(record: EvidenceRecord, frequency: str | None) -> float:
     return conf * freshness_score(age, frequency=frequency)
 
 
+def classify_evidence(
+    requirement: Requirement, records: list[EvidenceRecord]
+) -> tuple[list[EvidenceRecord], list[EvidenceRecord], list[EvidenceRecord]]:
+    """Split mapped records into (good, failing, ambiguous) for a requirement.
+
+    The three buckets are mutually exclusive: good requires approved + fresh +
+    confident; failing requires rejected, stale-without-approval, or contradicted;
+    ambiguous is everything else (for example pending review or needs update).
+    """
+    freq = requirement.audit_frequency
+    good = [r for r in records if _is_good(r, freq)]
+    failing = [r for r in records if _is_failing(r, freq)]
+    classified = {id(r) for r in good} | {id(r) for r in failing}
+    ambiguous = [r for r in records if id(r) not in classified]
+    return good, failing, ambiguous
+
+
 def score_requirement(
     requirement: Requirement,
     records: list[EvidenceRecord],
@@ -114,8 +131,7 @@ def score_requirement(
         )
 
     freq = requirement.audit_frequency
-    good = [r for r in records if _is_good(r, freq)]
-    failing = [r for r in records if _is_failing(r, freq)]
+    good, failing, _ambiguous = classify_evidence(requirement, records)
     evidence_ids = [r.evidence_id for r in records]
 
     if good and not failing:
@@ -176,12 +192,17 @@ def automation_rate(records: list[EvidenceRecord]) -> float:
     return round(100.0 * automated / len(records), 1)
 
 
-def score_corpus(
+def mapped_records_by_requirement(
     requirements: list[Requirement],
     records: list[EvidenceRecord],
     links: list[EvidenceLink],
-) -> tuple[list[RequirementScore], ComplianceSummary]:
-    """Map links to requirements, score each requirement, and roll up summaries."""
+) -> tuple[dict[str, list[EvidenceRecord]], dict[str, int], int]:
+    """Resolve links into per-requirement record lists.
+
+    Returns (mapped_by_requirement, method_breakdown, unmapped_count). Shared by
+    scoring, narrative, and reporting so they agree on which evidence supports
+    which requirement.
+    """
     by_evidence = {r.evidence_id: r for r in records}
     mapped_by_requirement: dict[str, list[EvidenceRecord]] = {req.id: [] for req in requirements}
     method_breakdown: dict[str, int] = {}
@@ -194,6 +215,18 @@ def score_corpus(
         record = by_evidence.get(link.evidence_id)
         if record is not None and link.requirement_id in mapped_by_requirement:
             mapped_by_requirement[link.requirement_id].append(record)
+    return mapped_by_requirement, method_breakdown, unmapped_count
+
+
+def score_corpus(
+    requirements: list[Requirement],
+    records: list[EvidenceRecord],
+    links: list[EvidenceLink],
+) -> tuple[list[RequirementScore], ComplianceSummary]:
+    """Map links to requirements, score each requirement, and roll up summaries."""
+    mapped_by_requirement, method_breakdown, unmapped_count = mapped_records_by_requirement(
+        requirements, records, links
+    )
 
     scores = [
         score_requirement(req, mapped_by_requirement[req.id]) for req in requirements

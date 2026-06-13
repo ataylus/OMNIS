@@ -4,6 +4,7 @@ Everything runs headless and offline:
   python -m omnis run                 parse policies + audit + one-line score summary
   python -m omnis eval [opts]          score detectors on both benches
   python -m omnis score [opts]         map evidence + score compliance, both benches
+  python -m omnis report [opts]        write an auditor-ready JSON + PDF report
   python -m omnis synth [opts]         (re)generate the synthetic bench
 
 `eval` scores the baseline and the rule detector on two benches side by side.
@@ -29,6 +30,7 @@ from omnis.ingest import parse_policies
 from omnis.integrity import audit_corpus
 from omnis.mapping import map_evidence
 from omnis.models import EvalResult, load_evidence
+from omnis.report import build_report, write_report
 from omnis.scoring import score_corpus
 from omnis.synthesis import load_synthetic_bench, materialize
 
@@ -164,6 +166,35 @@ def save_result_payload(payload: dict, path: str | Path) -> None:
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    requirements = parse_policies(args.policies)
+    if args.bench == "synthetic":
+        if not (SYNTHETIC_CSV.exists() and SYNTHETIC_IDS.exists()):
+            print("Synthetic bench not found. Generate it with: python -m omnis synth")
+            return 1
+        records, _ = load_synthetic_bench(SYNTHETIC_CSV, SYNTHETIC_IDS)
+        bench_label = "synthetic"
+    else:
+        records = load_evidence(args.evidence)
+        bench_label = "provided sample"
+
+    links = map_evidence(records, requirements)
+    findings = audit_corpus(records, requirements)
+    report = build_report(bench_label, requirements, records, links, findings)
+    json_path, pdf_path = write_report(report, args.out)
+
+    es = report["executive_summary"]
+    print(f"Report for {bench_label} bench:")
+    print(
+        f"  Omniscience Index {es['omniscience_index']}/100, "
+        f"Automation Rate {es['automation_rate']}%, "
+        f"statuses {es['status_breakdown']}"
+    )
+    print(f"  Wrote {json_path}")
+    print(f"  Wrote {pdf_path} ({pdf_path.stat().st_size // 1024} KB)")
+    return 0
+
+
 def _cmd_synth(args: argparse.Namespace) -> int:
     bench = materialize(args.out, n=args.n, seed=args.seed)
     pos = sum(1 for r in bench.records if r.anomaly_marker)
@@ -259,6 +290,13 @@ def build_parser() -> argparse.ArgumentParser:
     score_p.add_argument("--policies", type=Path, default=DEFAULT_POLICIES)
     score_p.add_argument("--out", type=Path, default=DEFAULT_SCORE_OUT)
     score_p.set_defaults(func=_cmd_score)
+
+    report_p = sub.add_parser("report", help="write an auditor-ready JSON + PDF report")
+    report_p.add_argument("--bench", choices=["sample", "synthetic"], default="sample")
+    report_p.add_argument("--evidence", type=Path, default=DEFAULT_EVIDENCE)
+    report_p.add_argument("--policies", type=Path, default=DEFAULT_POLICIES)
+    report_p.add_argument("--out", type=Path, default=Path("reports"))
+    report_p.set_defaults(func=_cmd_report)
 
     synth_p = sub.add_parser("synth", help="(re)generate the synthetic bench")
     synth_p.add_argument("--out", type=Path, default=SYNTHETIC_DIR)

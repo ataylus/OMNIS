@@ -10,6 +10,8 @@ requires-python = ">=3.10"
 dependencies = [
     "pandas==2.3.3",
     "pydantic==2.13.4",
+    "numpy==2.4.3",
+    "fpdf2==2.8.7",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +28,8 @@ packages = [
     "omnis.synthesis",
     "omnis.mapping",
     "omnis.scoring",
+    "omnis.narrative",
+    "omnis.report",
 ]
 
 [tool.pytest.ini_options]
