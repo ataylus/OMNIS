@@ -221,3 +221,7 @@ __marimo__/
 CLAUDE.md
 *:Zone.Identifier
 reports/*.json
+
+# local context (not for git)
+_context/
+context/
