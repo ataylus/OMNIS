@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from omnis.ingest import parse_policies
+from omnis.ingest import classify_ambiguity, parse_policies
 
 SAMPLE = Path("data/sample/policy_documents.txt")
 
@@ -58,3 +58,20 @@ def test_compliance_mappings_parsed_as_list(requirements):
     ]
     r2 = next(r for r in requirements if r.id == "POL-ENC-001-R2")
     assert r2.compliance_mappings == ["NIST SC-7", "ISO 27001 A.10.1.1"]
+
+
+def test_principle_based_requirements_flagged_ambiguous(requirements):
+    # "least privilege" and "no personal use" have no measurable threshold.
+    flagged = {r.id for r in requirements if r.ambiguous}
+    assert "POL-AC-001-R2" in flagged
+    assert "POL-AC-001-R3" in flagged
+    note = next(r for r in requirements if r.id == "POL-AC-001-R2").ambiguity_note
+    assert note and "least privilege" in note
+
+
+def test_prescriptive_requirements_not_flagged(requirements):
+    # Concrete thresholds (AES-256, TLS 1.2, MFA) are not ambiguous.
+    r1 = next(r for r in requirements if r.id == "POL-ENC-001-R1")  # AES-256
+    assert not r1.ambiguous
+    assert not classify_ambiguity("Data in transit must use TLS 1.2 or higher")[0]
+    assert classify_ambiguity("Access reviews must happen periodically")[0]

@@ -102,6 +102,10 @@ class Requirement(BaseModel):
     evidence_source: str | None = None
     audit_frequency: str | None = None
     compliance_mappings: list[str] = []
+    # Set by the parser: a principle-based requirement with no measurable
+    # threshold (e.g. "least privilege"), so compliance needs auditor judgment.
+    ambiguous: bool = False
+    ambiguity_note: str | None = None
     # Passthrough policy header context.
     policy_version: str | None = None
     policy_status: str | None = None

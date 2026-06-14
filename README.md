@@ -14,6 +14,12 @@ A compliance evidence engine that reads security policies, matches evidence agai
 
 ![OMNIS dashboard](docs/hero.png)
 
+> **Judges, start here (30 seconds):** `pip install -r requirements.txt`, then
+> `make demo` opens the dashboard, `make test` runs the 100 tests, and
+> `make analyze` reproduces the finding that the provided labels are noise. The
+> committed [reports/report.pdf](reports/report.pdf) is the auditor-ready output.
+> Everything runs offline with no API key.
+
 ---
 
 ## The problem, plainly
@@ -192,7 +198,7 @@ The performance numbers above are measured with the LLM off. The model never sit
 
 ## Limitations
 
-This is a proof of concept and it's honest about its edges. The two evidence collectors are mock integrations: they read committed sample exports (CloudTrail and AWS Config) and emit real pipeline records, so auto-collection works end to end, but swapping the file read for a live API call is the one remaining integration step ([docs/COLLECTORS.md](docs/COLLECTORS.md)). The content linker is TF-IDF, a solid offline baseline, not semantic embeddings, so its exact-id-ablated recovery is 54.7%, well above random but short of perfect. The synthetic bench is labeled by construction plus injected noise, which is exactly why the provided sample, noisy labels and all, stays the primary real-world test rather than the easy one. Performance is measured on one laptop ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)) at the rubric's full 500-requirement, 5,000-evidence scale.
+This is a proof of concept and it's honest about its edges. The two evidence collectors are mock integrations: they read committed sample exports (CloudTrail and AWS Config) and emit real pipeline records, so auto-collection works end to end, but swapping the file read for a live API call is the one remaining integration step ([docs/COLLECTORS.md](docs/COLLECTORS.md)). The content linker is TF-IDF, a solid offline baseline, not semantic embeddings, so its exact-id-ablated recovery is 54.7%, well above random but short of perfect. The synthetic bench is labeled by the same rule logic the detector uses, so its 0.957 detection score would be circular on its own; that is exactly why the provided sample, noisy labels and all, stays the primary real-world test, why we add 5% label noise so a perfect score is impossible, and why the linking metric ablates the very id it is graded on. We would rather show a measured 54.7% than a circular 100%. Performance is measured on one laptop ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)) at the rubric's full 500-requirement, 5,000-evidence scale.
 
 ## Layout
 

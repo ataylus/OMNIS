@@ -23,6 +23,39 @@ _FIELD_RE = re.compile(r"^-\s*([^:]+?)\s*:\s*(.*)$")
 # A header line in the policy block: "KEY: value".
 _HEADER_RE = re.compile(r"^([A-Za-z_]+)\s*:\s*(.*)$")
 
+# Principle-based phrasings that have no objective pass/fail criterion. A
+# requirement that uses one of these and states no concrete threshold is
+# ambiguous: an auditor has to interpret it. This is the "ambiguous requirement"
+# edge case the brief asks us to surface at extraction time.
+_VAGUE_TERMS = (
+    "least privilege", "personal use", "as appropriate", "where appropriate",
+    "as needed", "where feasible", "if applicable", "as necessary", "reasonable",
+    "periodically", "from time to time", "adequate", "sufficient", "timely",
+    "best effort", "as required",
+)
+# Concrete, testable criteria. If a requirement names one of these, it has an
+# objective check and is not flagged, even if it also reads loosely.
+_CONCRETE_RE = re.compile(
+    r"\b(\d+\s*(?:days?|hours?|months?|years?|bit|bits)|aes-?\d+|tls\s*\d|"
+    r"sha-?\d+|rsa-?\d+|annually|quarterly|monthly|weekly|daily|"
+    r"multi-?factor|mfa)\b",
+    re.IGNORECASE,
+)
+
+
+def classify_ambiguity(text: str) -> tuple[bool, str | None]:
+    """Flag a requirement whose text states a principle but no measurable
+    threshold. Returns (is_ambiguous, note)."""
+    low = (text or "").lower()
+    hit = next((term for term in _VAGUE_TERMS if term in low), None)
+    if hit and not _CONCRETE_RE.search(text or ""):
+        return True, (
+            f'States a principle ("{hit}") with no measurable threshold; '
+            f"compliance is a matter of auditor judgment, not an objective check."
+        )
+    return False, None
+
+
 # Canonical field-name -> Requirement attribute. Keys are lowercased.
 _FIELD_MAP = {
     "responsible": "responsible",
@@ -76,12 +109,16 @@ def _parse_policy_block(block: str) -> list[Requirement]:
     def flush() -> None:
         if current_number is None:
             return
+        req_text = " ".join(p.strip() for p in current_text_parts).strip()
+        is_ambiguous, ambiguity_note = classify_ambiguity(req_text)
         req = Requirement(
             id=f"{policy_id}-R{current_number}",
             policy_id=policy_id,
             policy_title=policy_title,
             number=current_number,
-            text=" ".join(p.strip() for p in current_text_parts).strip(),
+            text=req_text,
+            ambiguous=is_ambiguous,
+            ambiguity_note=ambiguity_note,
             responsible=current_fields.get("responsible"),
             scope=current_fields.get("scope"),
             evidence_source=current_fields.get("evidence_source"),

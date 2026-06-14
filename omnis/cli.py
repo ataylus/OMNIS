@@ -91,6 +91,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
         ],
     )
     print()
+    ambiguous = [r for r in requirements if r.ambiguous]
+    if ambiguous:
+        print(f"Ambiguous requirements: {len(ambiguous)} (principle-based, need interpretation)")
+        for r in ambiguous:
+            print(f"  {r.id}: {r.text}")
+            print(f"           {r.ambiguity_note}")
+        print()
     print(f"Integrity findings: {len(findings)}")
     for f in findings:
         sample = f", sample: {', '.join(f.affected_ids)}" if f.affected_ids else ""

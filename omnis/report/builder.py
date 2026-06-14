@@ -61,6 +61,9 @@ def build_report(
                 "requirement_id": req.id,
                 "policy_title": req.policy_title,
                 "text": req.text,
+                "frameworks": ", ".join(req.compliance_mappings[:2]) or "n/a",
+                "ambiguous": req.ambiguous,
+                "ambiguity_note": req.ambiguity_note,
                 "status": score.status,
                 "confidence": score.confidence,
                 "evidence_ids": score.evidence_ids,
@@ -325,17 +328,62 @@ def render_pdf(report: dict, path: str | Path) -> Path:
     )
     pdf.ln(3)
 
-    # --- 2 requirements --------------------------------------------------
-    pdf._section("2", "Requirements")
+    # --- 2 traceability matrix ------------------------------------------
+    pdf._section("2", "Traceability matrix")
+    pdf.set_font(fam, "", 9.5)
+    pdf.set_text_color(*MUTED)
+    pdf.multi_cell(
+        width,
+        4.6,
+        _latin1("Every requirement, its compliance mapping, its status, and how many evidence records back it."),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+        align="L",
+    )
+    pdf.ln(2)
+    cols = [("Requirement", 0.24), ("Status", 0.15), ("Evidence", 0.13), ("Compliance mapping", 0.48)]
+    y = pdf.get_y()
+    pdf._hrule(y, INK, 0.5)
+    y += 1.6
+    pdf.set_xy(left, y)
+    pdf.set_font(fam, "B", 9)
+    pdf.set_text_color(*INK)
+    for name, frac in cols:
+        pdf.cell(width * frac, 5.4, _latin1(name))
+    pdf.ln(5.4)
+    pdf._hrule(pdf.get_y() + 0.2, INK, 0.25)
+    pdf.ln(1.6)
+    for r in report["requirements"]:
+        if pdf.get_y() > pdf.h - 22:
+            pdf.add_page()
+        strong, _soft = _STATUS_COLORS.get(r["status"], _STATUS_COLORS["UNKNOWN"])
+        rx = left
+        pdf.set_font(fam, "", 9)
+        pdf.set_text_color(*INK)
+        pdf.set_xy(rx, pdf.get_y())
+        pdf.cell(width * cols[0][1], 5.2, _latin1(r["requirement_id"]))
+        pdf.set_text_color(*strong)
+        pdf.set_font(fam, "B", 9)
+        pdf.cell(width * cols[1][1], 5.2, _latin1(r["status"]))
+        pdf.set_font(fam, "", 9)
+        pdf.set_text_color(*INK)
+        pdf.cell(width * cols[2][1], 5.2, _latin1(str(len(r["evidence_ids"]))))
+        pdf.set_text_color(*MUTED)
+        pdf.cell(width * cols[3][1], 5.2, _latin1(r["frameworks"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf._hrule(pdf.get_y() + 0.4, INK, 0.5)
+    pdf.ln(4)
+
+    # --- 3 requirements --------------------------------------------------
+    pdf._section("3", "Requirements")
     for i, r in enumerate(report["requirements"], start=1):
         if pdf.get_y() > pdf.h - 44:
             pdf.add_page()
         fr = r["freshness"]
         strong, _soft = _STATUS_COLORS.get(r["status"], _STATUS_COLORS["UNKNOWN"])
-        # run-in subsection heading: "2.i  REQ-ID   STATUS"
+        # run-in subsection heading: "3.i  REQ-ID   STATUS"
         pdf.set_font(fam, "B", 10.5)
         pdf.set_text_color(*INK)
-        head = f"2.{i}   {r['requirement_id']}"
+        head = f"3.{i}   {r['requirement_id']}"
         pdf.cell(pdf.get_string_width(_latin1(head)) + 2.5, 5.6, _latin1(head))
         pdf.set_text_color(*strong)
         pdf.cell(0, 5.6, _latin1(r["status"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -349,6 +397,20 @@ def render_pdf(report: dict, path: str | Path) -> Path:
         )
         pdf.multi_cell(width, 4.4, _latin1(meta), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="J")
         pdf.ln(1)
+        # ambiguous (principle-based) requirements get a flagged note
+        if r.get("ambiguous"):
+            amber = _STATUS_COLORS["PARTIAL"][0]
+            pdf.set_font(fam, "I", 9)
+            pdf.set_text_color(*amber)
+            pdf.multi_cell(
+                width,
+                4.4,
+                _latin1(f"Ambiguous requirement. {r.get('ambiguity_note', '')}"),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+                align="L",
+            )
+            pdf.ln(1)
         # linked evidence pointers, so a reader can follow the proof to the artifact
         for ev in r.get("evidence", []):
             pdf.set_font(fam, "I", 8.8)
@@ -382,7 +444,7 @@ def render_pdf(report: dict, path: str | Path) -> Path:
         pdf.ln(5)
 
     # --- 3 corpus integrity findings ------------------------------------
-    pdf._section("3", "Corpus integrity findings")
+    pdf._section("4", "Corpus integrity findings")
     pdf.set_font(fam, "", 10)
     pdf.set_text_color(*INK)
     pdf.multi_cell(
@@ -405,7 +467,7 @@ def render_pdf(report: dict, path: str | Path) -> Path:
         strong, _soft = _SEVERITY_COLORS.get(f["severity"], _STATUS_COLORS["UNKNOWN"])
         pdf.set_font(fam, "B", 10.5)
         pdf.set_text_color(*INK)
-        head = f"3.{i}   {f['check_name']}"
+        head = f"4.{i}   {f['check_name']}"
         pdf.cell(pdf.get_string_width(_latin1(head)) + 2.5, 5.6, _latin1(head))
         pdf.set_text_color(*strong)
         pdf.cell(0, 5.6, _latin1(f["severity"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)

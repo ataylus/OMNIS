@@ -1,13 +1,18 @@
 # The four judged edge cases
 
-The brief calls out four evidence situations an auditor's tool must handle and
-show, not hide: missing, conflicting, low-confidence, and ambiguous evidence.
-Each one has a named handling path in OMNIS and a place a judge can see it. The
-sections below give the definition, the code that handles it, where it surfaces
-(module plus CLI / report / dashboard), and a concrete example from the data.
+The brief calls out four situations an auditor's tool must handle and show, not
+hide: missing evidence, conflicting evidence, low-confidence evidence, and
+ambiguity. Each has a named handling path in OMNIS and a place a judge can see it.
+The sections below give the definition, the code that handles it, where it
+surfaces (module plus CLI / report / dashboard), and a concrete example from the
+data.
 
-All status logic lives in `omnis/scoring/scorer.py`; the auditor-voice prose for
-each case lives in `omnis/narrative/templates.py`.
+We read ambiguity two ways and handle both: an **ambiguous requirement** (vague
+policy language with no measurable criterion, caught at parse time, section 4) and
+**ambiguous evidence** (present but inconclusive, caught at scoring time, section
+5). Status logic lives in `omnis/scoring/scorer.py`, requirement ambiguity in
+`omnis/ingest/parser.py::classify_ambiguity`, and the auditor-voice prose in
+`omnis/narrative/templates.py`.
 
 ## 1. Missing evidence
 
@@ -78,7 +83,32 @@ dominant problem when that is what it sees.
 confidence below 0.6. `EVD00001` is one of them (Approved, confidence 0.57): the
 paperwork says yes, the confidence says do not trust it.
 
-## 4. Ambiguous evidence
+## 4. Ambiguous requirements
+
+**Definition.** A requirement written as a principle with no measurable criterion,
+so there is no objective pass or fail. "Access must follow principle of least
+privilege" cannot be checked the way "encrypted with AES-256" or "retained for 90
+days" can.
+
+**How OMNIS handles it.** `classify_ambiguity` (parser.py) flags a requirement
+when its text uses a vague qualifier (least privilege, personal use, as
+appropriate, reasonable, periodically, and so on) and states no concrete threshold
+(no number, time window, or named standard). The requirement carries `ambiguous`
+and an `ambiguity_note` from parse time onward, so the ambiguity is surfaced
+before any evidence is even considered. It is flagged, not silently scored as if
+it were objective.
+
+**Where it surfaces.**
+- CLI: `omnis run` prints an "Ambiguous requirements" block with each flagged
+  requirement and the reason.
+- Report: flagged requirements show an amber "Ambiguous requirement" note with the
+  reason, above the evidence and narrative.
+
+**Concrete example.** On the provided sample, `POL-AC-001-R2` ("principle of least
+privilege") and `POL-AC-001-R3` ("no personal use") are flagged: real controls,
+but compliance is an auditor judgment call, and OMNIS says so up front.
+
+## 5. Ambiguous evidence
 
 **Definition.** Evidence that is neither clearly good nor clearly failing, for
 example pending review or flagged as needs-update.
@@ -107,4 +137,5 @@ settle the question.
 | Missing | UNKNOWN | `score_requirement` | CLI, report, dashboard chip + ask box |
 | Conflicting | PARTIAL (good + failing) | `classify_evidence` + narrative | CLI rationale, report/dashboard narrative |
 | Low-confidence | contradiction | `status_confidence_contradiction`, `_is_failing` | CLI run, report integrity appendix, dashboard panel |
-| Ambiguous | PARTIAL (ambiguous bucket) | `classify_evidence`, `UNREVIEWED_EVIDENCE` | CLI rationale, eval per-class, report/dashboard narrative |
+| Ambiguous requirement | flagged at parse time | `classify_ambiguity` | CLI run, report note |
+| Ambiguous evidence | PARTIAL (ambiguous bucket) | `classify_evidence`, `UNREVIEWED_EVIDENCE` | CLI rationale, eval per-class, report/dashboard narrative |
