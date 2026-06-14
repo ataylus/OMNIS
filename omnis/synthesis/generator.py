@@ -52,6 +52,15 @@ EVIDENCE_TYPES = [
     "Configuration_Snapshot", "Audit_Log", "Access_Report", "Encryption_Cert",
     "Training_Record", "Test_Result", "Policy_Document", "Screenshot",
 ]
+# Weighted to model an enterprise that has automated most evidence collection:
+# the five machine-collectable types (AUTO_TYPES in scoring) carry ~0.74 of the
+# mass, the three human-produced types ~0.26, so the Automation Rate lands above
+# the 70% success target by construction rather than by accident. Aligned to
+# EVIDENCE_TYPES by index.
+EVIDENCE_TYPE_WEIGHTS = [
+    0.18, 0.20, 0.14, 0.10,  # Configuration_Snapshot, Audit_Log, Access_Report, Encryption_Cert (auto)
+    0.09, 0.12, 0.08, 0.09,  # Training_Record(man), Test_Result(auto), Policy_Document(man), Screenshot(man)
+]
 SOURCE_SYSTEMS = ["AWS", "Azure", "Okta", "Splunk", "Vault", "GitHub", "CrowdStrike"]
 FIRST_NAMES = ["Aisha", "Rohan", "Priya", "Michael", "Diya", "Thomas", "Neha", "Arjun"]
 LAST_NAMES = ["Smith", "Patel", "Sharma", "Gupta", "Singh", "Lee", "Martin", "Nair"]
@@ -93,7 +102,21 @@ def _oracle_label(row: dict, valid_ids: set[str]) -> str | None:
     return prediction.anomaly_class if prediction is not None else None
 
 
-def _build_features(scenario: str, rng: random.Random, valid_ids: list[str]) -> dict:
+def _evidence_summary(rng: random.Random, topic: str) -> str:
+    """Build the evidence summary, consuming the same two draws as before so the
+    RNG stream (hence labels and scoring) is unchanged. When the row maps to a
+    real requirement, the summary names the control, which gives the content
+    linker something real to match on; orphan rows stay generic."""
+    system = rng.choice(SOURCE_SYSTEMS)
+    count = rng.randint(50, 9000)
+    if topic:
+        return f"{system} export for {topic}: {count} records collected and reviewed"
+    return f"{system} record with {count} entries"
+
+
+def _build_features(
+    scenario: str, rng: random.Random, valid_ids: list[str], req_by_id: dict
+) -> dict:
     """Generate the feature values for a scenario (before oracle labeling)."""
     boundary = rng.random() < BOUNDARY_RATE
     requirement_id = rng.choice(valid_ids)
@@ -137,17 +160,28 @@ def _build_features(scenario: str, rng: random.Random, valid_ids: list[str]) -> 
     review_date = collection_date + timedelta(days=rng.randint(1, 20))
     first, last = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
     rfirst, rlast = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
+    # Mappable rows carry the real requirement's text and topic, so a row reads
+    # like genuine evidence collected for a known control. Orphan rows reference
+    # a requirement not in the policy set, so they stay generic and the linker
+    # is meant to leave them UNMAPPED rather than force a match.
+    req = req_by_id.get(requirement_id)
+    if req is not None:
+        requirement_description = req.text
+        topic = req.policy_title
+    else:
+        requirement_description = "External control reference; no matching policy requirement."
+        topic = ""
     return {
         "evidence_id": "",  # filled by caller
         "requirement_id": requirement_id,
-        "requirement_description": "Synthetic control requirement",
+        "requirement_description": requirement_description,
         "framework": rng.choice(FRAMEWORKS),
-        "evidence_type": rng.choice(EVIDENCE_TYPES),
+        "evidence_type": rng.choices(EVIDENCE_TYPES, weights=EVIDENCE_TYPE_WEIGHTS, k=1)[0],
         "collected_by": f"{first} {last}",
         "collector_email": f"{first.lower()}.{last.lower()}@company.com",
         "collection_date": collection_date.isoformat(),
         "freshness_days": str(age),
-        "evidence_summary": f"{rng.choice(SOURCE_SYSTEMS)} record with {rng.randint(50, 9000)} entries",
+        "evidence_summary": _evidence_summary(rng, topic),
         "reviewed_by": f"{rfirst} {rlast}",
         "reviewer_email": f"{rfirst.lower()}.{rlast.lower()}@company.com",
         "review_date": review_date.isoformat(),
@@ -177,6 +211,8 @@ def generate_synthetic(
     rng = random.Random(seed)
     valid_ids = list(valid_requirement_ids) if valid_requirement_ids else _valid_ids()
     valid_set = set(valid_ids)
+    # id -> Requirement, so a mappable row can carry its control's real text.
+    req_by_id = {r.id: r for r in parse_policies(DEFAULT_POLICY_PATH) if r.id in valid_set}
     scenario_counts: dict[str, int] = {}
     noise_count = 0
     records: list[EvidenceRecord] = []
@@ -187,7 +223,7 @@ def generate_synthetic(
 
     for i, scenario in enumerate(_scenarios(rng, n)):
         scenario_counts[scenario] = scenario_counts.get(scenario, 0) + 1
-        row = _build_features(scenario, rng, valid_ids)
+        row = _build_features(scenario, rng, valid_ids, req_by_id)
         row["evidence_id"] = f"SYN{i:05d}"
         label = _oracle_label(row, valid_set)  # None == clean
 

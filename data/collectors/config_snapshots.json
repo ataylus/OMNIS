@@ -1,0 +1,10 @@
+{
+  "source": "AWS Config (sample snapshot)",
+  "note": "A small, committed sample so the collector runs offline. A live collector replaces this file read with an AWS Config / cloud config API call; the record shape is identical.",
+  "snapshots": [
+    {"snapshotId": "cfg-0001", "resourceType": "AWS::S3::Bucket", "resourceId": "arn:aws:s3:::prod-data", "capturedAt": "2026-04-13T06:00:00Z", "requirement_id": "POL-ENC-001-R1", "compliant": true, "setting": "default encryption SSE-KMS enabled"},
+    {"snapshotId": "cfg-0002", "resourceType": "AWS::EC2::SecurityGroup", "resourceId": "sg-0af3e21d", "capturedAt": "2026-04-13T06:00:00Z", "requirement_id": "POL-PCI-001-R2", "compliant": true, "setting": "ingress restricted to tcp/443 from approved CIDRs"},
+    {"snapshotId": "cfg-0003", "resourceType": "AWS::RDS::DBInstance", "resourceId": "db-fin-01", "capturedAt": "2026-04-08T06:00:00Z", "requirement_id": "POL-PCI-001-R1", "compliant": false, "setting": "backup retention 30d, below the required window"},
+    {"snapshotId": "cfg-0004", "resourceType": "AWS::KMS::Key", "resourceId": "key/health-phi", "capturedAt": "2026-04-07T06:00:00Z", "requirement_id": "POL-HIPAA-001-R1", "compliant": true, "setting": "automatic key rotation enabled"}
+  ]
+}

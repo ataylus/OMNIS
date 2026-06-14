@@ -1,0 +1,11 @@
+{
+  "source": "AWS CloudTrail (sample export)",
+  "note": "A small, committed sample so the collector runs offline. A live collector replaces this file read with a CloudTrail LookupEvents API call; the record shape is identical.",
+  "events": [
+    {"eventId": "0a1b2c3d", "eventName": "GenerateDataKey", "eventSource": "kms.amazonaws.com", "eventTime": "2026-04-10T08:14:00Z", "requirement_id": "POL-ENC-001-R2", "recordedEvents": 1422, "completeness": 0.97},
+    {"eventId": "1b2c3d4e", "eventName": "ConsoleLogin", "eventSource": "signin.amazonaws.com", "eventTime": "2026-04-12T02:31:00Z", "requirement_id": "POL-AC-001-R1", "recordedEvents": 884, "completeness": 0.93},
+    {"eventId": "2c3d4e5f", "eventName": "PutBucketLogging", "eventSource": "s3.amazonaws.com", "eventTime": "2026-04-11T19:05:00Z", "requirement_id": "POL-AUD-001-R1", "recordedEvents": 2034, "completeness": 0.99},
+    {"eventId": "3d4e5f60", "eventName": "LookupEvents", "eventSource": "cloudtrail.amazonaws.com", "eventTime": "2026-04-09T11:42:00Z", "requirement_id": "POL-HIPAA-001-R2", "recordedEvents": 1290, "completeness": 0.90},
+    {"eventId": "4e5f6071", "eventName": "GetObject", "eventSource": "s3.amazonaws.com", "eventTime": "2026-03-02T05:20:00Z", "requirement_id": "POL-AUD-001-R3", "recordedEvents": 640, "completeness": 0.71}
+  ]
+}

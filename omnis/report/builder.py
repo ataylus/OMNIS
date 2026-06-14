@@ -67,6 +67,15 @@ def build_report(
                 "freshness": _freshness_block(req, mapped),
                 "narrative": generate_narrative(req, score, mapped, enrich=enrich),
                 "next_steps": recommend(req, score, mapped),
+                "evidence": [
+                    {
+                        "evidence_id": r.evidence_id,
+                        "evidence_type": r.evidence_type,
+                        "location": r.evidence_location or "n/a",
+                        "status": r.status,
+                    }
+                    for r in mapped[:4]
+                ],
             }
         )
 
@@ -340,6 +349,23 @@ def render_pdf(report: dict, path: str | Path) -> Path:
         )
         pdf.multi_cell(width, 4.4, _latin1(meta), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="J")
         pdf.ln(1)
+        # linked evidence pointers, so a reader can follow the proof to the artifact
+        for ev in r.get("evidence", []):
+            pdf.set_font(fam, "I", 8.8)
+            pdf.set_text_color(*MUTED)
+            pdf.multi_cell(
+                width,
+                4.1,
+                _latin1(
+                    f"     {ev['evidence_id']}  ·  {ev['evidence_type']}  ·  "
+                    f"{ev['status']}  ·  {ev['location']}"
+                ),
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+                align="L",
+            )
+        if r.get("evidence"):
+            pdf.ln(1)
         # narrative, justified
         pdf.set_font(fam, "", 10)
         pdf.set_text_color(*INK)

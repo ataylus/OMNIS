@@ -31,6 +31,7 @@ packages = [
     "omnis.narrative",
     "omnis.report",
     "omnis.dashboard",
+    "omnis.collectors",
 ]
 
 [tool.setuptools.package-data]

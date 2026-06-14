@@ -35,6 +35,9 @@ demo: ## Launch the dashboard (alias for serve)
 synth: ## Regenerate the synthetic bench into data/synthetic
 	$(PYTHON) -m omnis synth --out data/synthetic
 
+collect: ## Run the mock evidence collectors (CloudTrail + config snapshot)
+	$(PYTHON) -m omnis collect
+
 perf: ## Time the full pipeline on 5,000 evidence rows
 	$(PYTHON) -m omnis perf --n 5000
 

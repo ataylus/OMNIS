@@ -57,7 +57,7 @@ features (the "oracle"), so boundary rows are labeled by the strict rule.
 ## Injected realism
 
 - Label noise: 5% of rows have their marker corrupted while features
-  are left intact (24 rows in this build). Clean rows become a
+  are left intact (23 rows in this build). Clean rows become a
   random anomaly class (false negatives for the detector); anomalous rows become
   blank (false positives). This caps achievable precision/recall below 1.0.
 - Boundary cases: 15% of rows place the deciding feature next to its
@@ -66,7 +66,7 @@ features (the "oracle"), so boundary rows are labeled by the strict rule.
 
 ## Composition (this build)
 
-Rows: 500. Anomalous: 247. Clean: 253. Injected noise rows: 24.
+Rows: 500. Anomalous: 256. Clean: 244. Injected noise rows: 23.
 
 | scenario | count |
 |---|---|
@@ -80,8 +80,8 @@ Rows: 500. Anomalous: 247. Clean: 253. Injected noise rows: 24.
 
 | anomaly_marker (post-noise) | count |
 |---|---|
-| COMPLIANCE_GAP | 64 |
+| COMPLIANCE_GAP | 68 |
 | INCOMPLETE_MAPPING | 51 |
-| MISSING_DOCUMENTATION | 46 |
-| STALE_EVIDENCE | 38 |
-| UNREVIEWED_EVIDENCE | 48 |
+| MISSING_DOCUMENTATION | 45 |
+| STALE_EVIDENCE | 43 |
+| UNREVIEWED_EVIDENCE | 49 |

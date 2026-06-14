@@ -25,8 +25,12 @@ from collections import Counter
 
 from omnis.models import EvidenceLink, EvidenceRecord, Requirement
 
-# TF-IDF cosine below this is treated as no confident match -> UNMAPPED.
-SIM_FLOOR = 0.10
+# TF-IDF cosine below this is treated as no confident match -> UNMAPPED. Tuned so
+# evidence whose text genuinely matches a requirement is linked, while generic or
+# orphan-referencing evidence (no real signal) is left UNMAPPED rather than
+# force-fit to the nearest requirement. Leaving weak evidence unmapped is the
+# honest outcome and feeds the INCOMPLETE_MAPPING story.
+SIM_FLOOR = 0.30
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = {
@@ -196,6 +200,46 @@ def map_evidence(
         )
         links.append(link)
     return links
+
+
+def content_link_accuracy(
+    records: list[EvidenceRecord], requirements: list[Requirement]
+) -> dict:
+    """Measure how well the content layers recover the correct requirement when
+    the exact id is hidden.
+
+    A hard ablation: for every record whose true requirement_id is a known
+    requirement, blank the id (so the exact-id layer cannot fire) and ask the
+    framework + TF-IDF layers to find the control from the evidence text alone.
+    This is the honest test of linking intelligence, since exact-id matching on
+    the same field that defines truth would be circular. Returns exact-requirement
+    and same-policy hit counts plus how many the linker honestly left unmapped.
+    """
+    by_id = {r.id: r for r in requirements}
+    mappable = [r for r in records if r.requirement_id in by_id]
+    blanked = [r.model_copy(update={"requirement_id": ""}) for r in mappable]
+    links = map_evidence(blanked, requirements)
+    exact = policy = unmapped = 0
+    for orig, link in zip(mappable, links):
+        if not link.mapped:
+            unmapped += 1
+            continue
+        if link.requirement_id == orig.requirement_id:
+            exact += 1
+        pred, true = by_id.get(link.requirement_id), by_id.get(orig.requirement_id)
+        if pred is not None and true is not None and pred.policy_id == true.policy_id:
+            policy += 1
+    total = len(mappable)
+    baseline = 1.0 / len(requirements) if requirements else 0.0
+    return {
+        "total": total,
+        "exact_hits": exact,
+        "policy_hits": policy,
+        "unmapped": unmapped,
+        "exact_accuracy": round(exact / total, 3) if total else 0.0,
+        "policy_accuracy": round(policy / total, 3) if total else 0.0,
+        "random_baseline": round(baseline, 3),
+    }
 
 
 def adjudicate_with_llm(

@@ -30,8 +30,8 @@ from omnis.evaluation.harness import Detector
 from omnis.ingest import parse_policies
 from omnis.integrity import audit_corpus
 from omnis.dashboard import build_dashboard_data, serve, write_static
-from omnis.mapping import map_evidence
-from omnis.models import EvalResult, load_evidence
+from omnis.mapping import content_link_accuracy, map_evidence
+from omnis.models import EvalResult, Requirement, load_evidence
 from omnis.report import build_report, write_report
 from omnis.scoring import score_corpus
 from omnis.synthesis import generate_synthetic, load_synthetic_bench, materialize
@@ -175,6 +175,26 @@ def _cmd_eval(args: argparse.Namespace) -> int:
             print(format_result(rules_result))
             if not passed:
                 rc = 1
+
+        # Evidence linking: a hard ablation. Hide the requirement_id and ask the
+        # content layers (framework + TF-IDF) to recover the right requirement.
+        syn_reqs = parse_policies(SYNTHETIC_POLICIES)
+        link_acc = content_link_accuracy(syn_records, syn_reqs)
+        payload["link_accuracy"] = link_acc
+        print()
+        print("Evidence linking (content recovery, exact id ablated):")
+        print(
+            f"  correct requirement: {link_acc['exact_hits']}/{link_acc['total']} "
+            f"({link_acc['exact_accuracy'] * 100:.1f}%)"
+        )
+        print(
+            f"  correct policy area: {link_acc['policy_hits']}/{link_acc['total']} "
+            f"({link_acc['policy_accuracy'] * 100:.1f}%)"
+        )
+        print(
+            f"  left unmapped: {link_acc['unmapped']}    "
+            f"random baseline: {link_acc['random_baseline'] * 100:.1f}%"
+        )
     else:
         print("Synthetic bench not found. Generate it with: python -m omnis synth")
     print()
@@ -245,6 +265,37 @@ def _cmd_synth(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_collect(args: argparse.Namespace) -> int:
+    """Run the mock collectors and show the auto-collected evidence flowing in."""
+    from collections import Counter
+
+    from omnis.collectors import COLLECTORS, collect_all
+    from omnis.scoring import AUTO_TYPES
+
+    records = collect_all()
+    auto = sum(1 for r in records if r.evidence_type in AUTO_TYPES)
+    auto_pct = round(100.0 * auto / len(records), 1) if records else 0.0
+    _card(
+        "OMNIS  ·  evidence collection",
+        [
+            ("Sources", f"{len(COLLECTORS)} (CloudTrail, AWS Config)"),
+            ("Records collected", str(len(records))),
+            ("Automated", f"{auto}/{len(records)}  ({auto_pct}%)"),
+        ],
+    )
+    requirements = parse_policies(SYNTHETIC_POLICIES)
+    links = map_evidence(records, requirements)
+    mapped = sum(1 for link in links if link.mapped)
+    methods = dict(Counter(link.method for link in links))
+    print(f"  linked {mapped}/{len(records)} to requirements (methods {methods})")
+    print()
+    print(f"  {'evidence':<14}{'type':<24}{'status':<13}location")
+    print("  " + "-" * 78)
+    for r in records:
+        print(f"  {r.evidence_id:<14}{r.evidence_type:<24}{r.status:<13}{r.evidence_location}")
+    return 0
+
+
 DEFAULT_SCORE_OUT = Path("reports/score_latest.json")
 
 
@@ -305,30 +356,70 @@ def _cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_perf(args: argparse.Namespace) -> int:
-    """Time the full offline pipeline on a large generated corpus.
+# Control topics used to synthesize realistic requirements for the perf test, so
+# the TF-IDF index has genuine vocabulary diversity rather than identical text.
+_PERF_TOPICS = [
+    ("Encryption at Rest", "Sensitive data at rest must be encrypted with approved key management and rotation.", "Encryption_Cert", "NIST SC-28"),
+    ("Access Logging", "All access to production systems must be logged centrally and reviewed.", "Audit_Log", "NIST AU-2"),
+    ("Access Review", "Privileged access must be recertified and least privilege enforced.", "Access_Report", "NIST AC-2"),
+    ("Configuration Baseline", "Systems must match an approved secure configuration baseline.", "Configuration_Snapshot", "CIS 5.1"),
+    ("Vulnerability Testing", "Externally facing services must be scanned and findings remediated.", "Test_Result", "PCI-DSS 11.2"),
+    ("Backup and Recovery", "Critical data must be backed up and restoration tested periodically.", "Configuration_Snapshot", "ISO27001 A.12.3"),
+    ("Change Management", "Production changes must be approved, recorded, and reversible.", "Audit_Log", "SOX ITGC"),
+    ("Data Retention", "Personal data must be retained only as long as lawfully required.", "Policy_Document", "GDPR Art.5"),
+    ("Incident Response", "Security incidents must be detected, triaged, and reported on time.", "Audit_Log", "NIST IR-4"),
+]
+_PERF_FREQUENCIES = ["Daily", "Weekly", "Monthly", "Quarterly", "Continuous"]
 
-    Generates `--n` synthetic evidence rows in memory (default 5000), then times
-    the four pipeline stages that the rubric's performance criterion covers:
-    parse policies, map evidence to requirements, score compliance, audit corpus
-    integrity. Generation is setup and is timed separately, not counted in the
-    pipeline number. Everything runs offline with the LLM adapter off.
+
+def _synth_requirements(n: int) -> list[Requirement]:
+    """Build n synthetic requirements with varied text for the perf test."""
+    reqs = []
+    for i in range(n):
+        topic, text, source, mapping = _PERF_TOPICS[i % len(_PERF_TOPICS)]
+        reqs.append(
+            Requirement(
+                id=f"PERF-REQ-{i:04d}",
+                policy_id=f"PERF-POL-{i // 9:03d}",
+                policy_title=f"{topic} Policy",
+                number=i % 9 + 1,
+                text=f"{text} (control instance {i}).",
+                evidence_source=source,
+                audit_frequency=_PERF_FREQUENCIES[i % len(_PERF_FREQUENCIES)],
+                compliance_mappings=[mapping],
+            )
+        )
+    return reqs
+
+
+def _cmd_perf(args: argparse.Namespace) -> int:
+    """Time the offline pipeline at the rubric's stated production scale.
+
+    Synthesizes `--reqs` requirements (default 500) and `--n` evidence rows
+    (default 5000) in memory, then times the scale-sensitive pipeline stages:
+    map evidence to requirements, score compliance, audit corpus integrity.
+    Synthesis is setup and is timed separately, not counted. Everything runs
+    offline with the LLM adapter off.
     """
     import time
 
-    print(f"Performance run: generating {args.n} synthetic evidence rows (seed {args.seed})...")
+    print(
+        f"Performance run: synthesizing {args.reqs} requirements + {args.n} evidence "
+        f"rows (seed {args.seed})..."
+    )
     gen_start = time.perf_counter()
-    bench = generate_synthetic(n=args.n, seed=args.seed)
+    requirements = _synth_requirements(args.reqs)
+    req_ids = [r.id for r in requirements]
+    bench = generate_synthetic(n=args.n, seed=args.seed, valid_requirement_ids=req_ids)
     records = bench.records
     gen_secs = time.perf_counter() - gen_start
-    print(f"  generated {len(records)} rows in {gen_secs:.2f}s (setup, not counted)")
+    print(
+        f"  generated {len(requirements)} requirements + {len(records)} evidence rows "
+        f"in {gen_secs:.2f}s (setup, not counted)"
+    )
     print()
 
     stage_secs: dict[str, float] = {}
-
-    t0 = time.perf_counter()
-    requirements = parse_policies(args.policies)
-    stage_secs["parse"] = time.perf_counter() - t0
 
     t0 = time.perf_counter()
     links = map_evidence(records, requirements)
@@ -345,7 +436,7 @@ def _cmd_perf(args: argparse.Namespace) -> int:
     total = sum(stage_secs.values())
     bar = 60.0
     print(f"Pipeline on {len(requirements)} requirements + {len(records)} evidence rows (LLM off):")
-    for stage in ("parse", "map", "score", "integrity"):
+    for stage in ("map", "score", "integrity"):
         print(f"  {stage:<10}{stage_secs[stage]:>8.3f}s")
     print(f"  {'TOTAL':<10}{total:>8.3f}s")
     print()
@@ -403,7 +494,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     serve_p.add_argument("--port", type=int, default=8000)
-    serve_p.add_argument("--bench", choices=["sample", "synthetic"], default="sample",
+    serve_p.add_argument("--bench", choices=["sample", "synthetic"], default="synthetic",
                          help="which bench is shown first (both are available via the toggle)")
     serve_p.add_argument("--policies", type=Path, default=DEFAULT_POLICIES)
     serve_p.add_argument("--write", type=Path, default=None,
@@ -416,6 +507,18 @@ def build_parser() -> argparse.ArgumentParser:
     synth_p.add_argument("--seed", type=int, default=20260614)
     synth_p.set_defaults(func=_cmd_synth)
 
+    collect_p = sub.add_parser(
+        "collect",
+        help="run the mock evidence collectors (CloudTrail + config snapshot)",
+        description=(
+            "Run the two mock collectors, which read committed sample exports and "
+            "emit EvidenceRecord objects in the pipeline's shape, then show them "
+            "linked to requirements. Mocked (file reads stand in for live APIs); "
+            "see docs/COLLECTORS.md. Runs offline, no API key."
+        ),
+    )
+    collect_p.set_defaults(func=_cmd_collect)
+
     perf_p = sub.add_parser(
         "perf",
         help="time the full pipeline on a large generated corpus",
@@ -425,9 +528,9 @@ def build_parser() -> argparse.ArgumentParser:
             "offline, writes nothing, needs no API key."
         ),
     )
+    perf_p.add_argument("--reqs", type=int, default=500, help="requirements to synthesize (default 500)")
     perf_p.add_argument("--n", type=int, default=5000, help="evidence rows to generate (default 5000)")
     perf_p.add_argument("--seed", type=int, default=20260614)
-    perf_p.add_argument("--policies", type=Path, default=SYNTHETIC_POLICIES)
     perf_p.set_defaults(func=_cmd_perf)
 
     return parser

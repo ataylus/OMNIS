@@ -3,51 +3,47 @@
 The PS3 performance criterion asks for the pipeline to handle scale (the brief
 cites 500 requirements + 5,000 evidence records) in under 60 seconds, measured
 with the LLM off or cached. OMNIS ships an LLM-off default, so every number here
-is the real offline path.
+is the real offline path, and the perf harness now runs that exact 500 + 5,000
+scale rather than extrapolating from a smaller set.
 
 ## How to reproduce
 
     make perf
-    # or: python -m omnis perf --n 5000
+    # or: python -m omnis perf            (defaults: 500 requirements, 5,000 evidence)
+    # or: python -m omnis perf --reqs 500 --n 5000
 
-`omnis perf` generates an in-memory synthetic corpus (default 5,000 evidence
-rows), then times the four pipeline stages the criterion covers: parse policies,
-map evidence to requirements, score compliance, audit corpus integrity.
-Generation is setup and is timed separately, not counted in the pipeline number.
-It writes nothing and needs no API key.
+`omnis perf` synthesizes the requirements and evidence in memory, then times the
+three scale-sensitive pipeline stages: map evidence to requirements, score
+compliance, audit corpus integrity. Synthesis is setup and is timed separately,
+not counted. It writes nothing and needs no API key.
 
 ## Measured number
 
 Machine: AMD Ryzen 7 7840HS (WSL2 Linux), Python 3.11, single process.
 
-| Stage | Time (15 requirements + 5,000 evidence rows) |
+| Stage | Time (500 requirements + 5,000 evidence rows) |
 |---|---|
-| parse | 0.000s |
-| map | 0.023s |
-| score | 0.012s |
-| integrity | 0.004s |
-| **TOTAL** | **0.043s** |
+| map | ~0.40s |
+| score | ~0.03s |
+| integrity | ~0.01s |
+| **TOTAL** | **~0.45s (observed 0.43-0.72s across runs)** |
 
-Bar: full pipeline < 60s. Measured 0.043s. **PASS**, with about three orders of
-magnitude of headroom.
-
-At 10,000 rows the pipeline takes about 0.09s, so it scales linearly in the
-evidence count.
+Bar: full pipeline < 60s. Measured well under 1 second at the full target scale,
+**PASS**, with about two orders of magnitude of headroom.
 
 ## Honest notes on the number
 
-- **Requirement count.** This run scores 5,000 evidence rows against the
-  synthetic policy set, which is 15 requirements, not 500. We did not synthesize
-  500 distinct policies; the brief's 500/5,000 figure is the target production
-  scale, and the development sample is 500 evidence rows. The cost that grows
-  with the corpus is the evidence count, which we do push to 5,000.
-- **Why it is so fast.** Most synthetic rows carry a real `requirement_id`, so
-  the linker resolves them on the exact-id layer (a dict lookup) and never
-  reaches TF-IDF. To bound the worst case we forced all 5,000 rows through the
-  TF-IDF layer (the most expensive path, cosine over every requirement): that
-  ran in 0.172s. The TF-IDF layer is O(rows x requirements), so a 500-requirement
-  set would raise the worst case by roughly 30x to a few seconds, still well
-  inside the 60s bar.
+- **Scale shown is the scale asked for.** The run scores 5,000 evidence rows
+  against 500 synthesized requirements, the brief's stated production figure. The
+  requirements are generated with varied control text so the TF-IDF index has
+  real vocabulary, not 500 identical documents.
+- **Where the time goes.** The `map` stage dominates, because rows whose id is
+  missing or orphaned fall through to the TF-IDF layer, which is O(rows x
+  requirements): cosine over 500 requirements for those rows. Rows with a known
+  id resolve on the exact-id layer (a dict lookup). Even with the TF-IDF fallback
+  doing real work at 500 requirements, the total stays under a second.
+- **Run-to-run variance.** The number moves a little between runs (0.43-0.72s
+  observed) with system load; all are far inside the 60s bar.
 - **No LLM in the timed path.** The LLM adapter is off by default and is not
   called during the pipeline. The numbers above are the shipped offline path,
   not a cached-LLM best case.

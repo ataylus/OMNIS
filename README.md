@@ -4,7 +4,7 @@
 **the partly omniscient auditor**
 
 ![Python](https://img.shields.io/badge/python-3.10+-1f3a5f?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-97%20passing-1f7a4d?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-100%20passing-1f7a4d?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-5f6b7a?style=flat-square)
 ![Offline](https://img.shields.io/badge/runs-offline%20·%20no%20API%20key-1c1b19?style=flat-square)
 
@@ -32,16 +32,17 @@ Two kinds of number matter here. What the product reports, and whether you shoul
 
 **What it reports** (run `python -m omnis score`):
 
-- **Omniscience Index 92.6 / 100** and **Automation Rate 64.4%** on the synthetic enterprise bench (15 requirements, 6 policies).
+- **Omniscience Index 92.4 / 100** and **Automation Rate 78.0%** on the synthetic enterprise bench (15 requirements, 6 policies). Automation clears the 70% success target.
 - **64.4 / 100** and **48.6%** on the provided sample, lower on purpose, because that data is a mess and the Index is honest about it.
 
 **Whether to believe it:**
 
-- **0.941 precision, 0.964 recall** on the synthetic bench. The bar was 0.70 and 0.60. (`make eval`)
-- **0.043 seconds** to run the full pipeline on 5,000 evidence records. The bar was 60. Three orders of magnitude of headroom. (`make perf`)
-- **97 tests**, all passing, one suite per module. (`make test`)
+- **0.957 precision, 0.953 recall** detecting evidence anomalies on the synthetic bench. The bar was 0.70 and 0.60. (`make eval`)
+- **Evidence linking, hard-tested:** with the requirement ID hidden, the content layers recover the correct requirement **54.7%** of the time, 8x the 6.7% random baseline, and leave genuinely unmappable evidence unmapped rather than guessing. (`make eval`)
+- **Under 1 second** to run the full pipeline at the rubric's production scale: 500 requirements and 5,000 evidence records. The bar was 60. (`make perf`)
+- **100 tests**, all passing, one suite per module. (`make test`)
 
-The split is the whole philosophy. The Index is the answer; precision, recall, and the tests are the receipt for the answer.
+The split is the whole philosophy. The Index is the answer; precision, recall, linking accuracy, and the tests are the receipt for the answer.
 
 ## We found something in the data
 
@@ -63,7 +64,7 @@ Six stages, none of them guess silently.
 
 **Reads** policy documents into discrete requirements. The parser is deterministic and tolerates the actual messiness in the sample file, including a malformed lowercase `scope:` field that a stricter parser would silently drop.
 
-**Links** each evidence record to a requirement through four fallback layers: exact ID match, then framework and type rules, then offline TF-IDF similarity, then an honest UNMAPPED verdict. Every link records which method found it and how confident it is. On the provided sample, every cited ID is an orphan that matches no real requirement, so exact match finds nothing and the lower layers carry the load. The layering is what gets coverage to zero unmapped on broken data.
+**Links** each evidence record to a requirement through layered matching: exact ID, then framework and type rules, then offline TF-IDF on the evidence text, then an honest UNMAPPED verdict. Every link carries the method that found it and a confidence. When an ID is missing or points at a requirement that does not exist, the content layers try to recover the right requirement from the text (measured: 54.7% exact recovery with the ID hidden, versus 6.7% random); evidence that still matches nothing is left UNMAPPED rather than forced (29 such rows on the synthetic bench), which is itself a finding.
 
 **Tracks freshness.** Each requirement's own audit frequency sets its decay clock. Daily controls go stale in days, quarterly ones have months. Old proof loses weight automatically, and the stored freshness field (which disagrees with the dates on 455 of 500 sample rows) is thrown out and recomputed.
 
@@ -101,7 +102,7 @@ A fragile tool dies on this. OMNIS treats it as the job: the integrity auditor c
 - A **section per requirement**: status, confidence, the linked evidence, the freshness block, the narrative, and the recommended next step.
 - An **integrity appendix**: every data-quality finding, by severity.
 
-It is 8 KB. It is the artifact you would actually hand an auditor.
+It is typeset in Latin Modern (the LaTeX typeface), about 45 KB, and reads like a document an auditor would actually accept. Each requirement also lists pointers to its linked evidence (id, type, status, location).
 
 ## Get it running
 
@@ -111,18 +112,19 @@ cd OMNIS
 pip install -r requirements.txt
 
 make demo      # dashboard at http://127.0.0.1:8000
-make test      # 97 tests
+make test      # 100 tests
 make analyze   # reproduce the label finding yourself
 ```
 
 Everything runs offline. No API key, no cloud, no cost.
 
 ```bash
-python -m omnis run                      # parse + audit the provided sample: Index 64.4/100, 5 findings
-python -m omnis score                    # both benches: synthetic Index 92.6/100, 15 requirements
-python -m omnis eval                     # P 0.941, R 0.964 on the synthetic bench -> PASS
-python -m omnis report --bench synthetic # auditor-ready JSON + PDF
-python -m omnis perf --n 5000            # 0.043s on 5,000 rows -> PASS
+python -m omnis run                      # parse + audit the provided sample (scorecard + findings)
+python -m omnis collect                  # run the mock CloudTrail + config collectors
+python -m omnis score                    # both benches: synthetic Index 92.4/100, 15 requirements
+python -m omnis eval                     # detection P 0.957 / R 0.953, plus linking accuracy -> PASS
+python -m omnis report --bench synthetic # auditor-ready JSON + PDF (typeset)
+python -m omnis perf                     # 500 requirements + 5,000 evidence in < 1s -> PASS
 ```
 
 Two benches. The **provided sample** (3 policies, 9 requirements, 500 rows) is the real-world stress test, the one with the signal-free labels and the broken dates. The **synthetic bench** (6 policies, 15 requirements) is generated by a seeded, configurable script that embeds its ground-truth labels by construction, restoring the advertised enterprise scope with data that means something. See [data/synthetic/DATA_CARD.md](data/synthetic/DATA_CARD.md).
@@ -160,6 +162,7 @@ flowchart TD
     FIND --> DASH
 
     SYN[synthesis: seeded generator] -.->|data/synthetic| EV
+    COL[collectors: CloudTrail + config, mock] -.->|automated EvidenceRecords| REC
     LLM[llm.py adapter: off / cached / live] -.->|optional enrich| NAR
 ```
 
@@ -189,18 +192,18 @@ The performance numbers above are measured with the LLM off. The model never sit
 
 ## Limitations
 
-This is a proof of concept and it's honest about its edges. The evidence collectors are architected but mocked: the Automation Rate comes from evidence-type tagging, not live integrations ([docs/COLLECTORS.md](docs/COLLECTORS.md) describes how real ones would attach). The mapping is TF-IDF, a solid offline baseline, not semantic embeddings. The synthetic bench is labeled by construction plus injected noise, which is exactly why the provided sample, noisy labels and all, stays the primary real-world test rather than the easy one. Performance is measured on one laptop ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)). And there are 15 requirements here, not the 500 a production deployment would carry, though at 0.043 seconds for 5,000 records and roughly linear scaling, headroom is not the worry.
+This is a proof of concept and it's honest about its edges. The two evidence collectors are mock integrations: they read committed sample exports (CloudTrail and AWS Config) and emit real pipeline records, so auto-collection works end to end, but swapping the file read for a live API call is the one remaining integration step ([docs/COLLECTORS.md](docs/COLLECTORS.md)). The content linker is TF-IDF, a solid offline baseline, not semantic embeddings, so its exact-id-ablated recovery is 54.7%, well above random but short of perfect. The synthetic bench is labeled by construction plus injected noise, which is exactly why the provided sample, noisy labels and all, stays the primary real-world test rather than the easy one. Performance is measured on one laptop ([docs/PERFORMANCE.md](docs/PERFORMANCE.md)) at the rubric's full 500-requirement, 5,000-evidence scale.
 
 ## Layout
 
 ```
 omnis/        the engine: ingest, integrity, mapping, freshness, scoring,
-              detect, narrative, report, dashboard, evaluation, llm
-data/         provided sample + synthetic bench (6 policies, 15 requirements)
+              detect, narrative, report, dashboard, evaluation, collectors, llm
+data/         provided sample + synthetic bench + collector sample exports
 docs/         edge cases, collectors, performance, hero image, original brief
 notebooks/    the analysis end to end
 scripts/      label_signal_analysis.py
-tests/        97 tests, one suite per module
+tests/        100 tests, one suite per module
 ```
 
 ## License
