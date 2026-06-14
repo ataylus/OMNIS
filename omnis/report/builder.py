@@ -100,61 +100,300 @@ def _latin1(text: str) -> str:
     return text.encode("latin-1", "replace").decode("latin-1")
 
 
-class _ReportPDF(FPDF):
-    def heading(self, text: str, size: int = 14) -> None:
-        self.set_font("Helvetica", "B", size)
-        self.multi_cell(0, size * 0.55, _latin1(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self.ln(1)
+# Near-black ink and quiet greys for a printed-document feel. Status colors are
+# the dashboard's, so the report and the UI read as one product.
+INK = (26, 25, 23)
+MUTED = (120, 116, 108)
+LINE = (200, 196, 188)
 
-    def body(self, text: str, size: int = 10) -> None:
-        self.set_font("Helvetica", "", size)
-        self.multi_cell(0, size * 0.52, _latin1(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+# status name -> (strong, soft) and severity -> (strong, soft)
+_STATUS_COLORS = {
+    "COMPLIANT": ((31, 122, 77), (233, 244, 238)),
+    "PARTIAL": ((154, 91, 8), (251, 240, 220)),
+    "GAP": ((179, 38, 30), (251, 233, 232)),
+    "UNKNOWN": ((95, 107, 122), (238, 241, 245)),
+}
+_STATUS_ORDER = ["COMPLIANT", "PARTIAL", "GAP", "UNKNOWN"]
+_SEVERITY_COLORS = {
+    "HIGH": _STATUS_COLORS["GAP"],
+    "CRITICAL": _STATUS_COLORS["GAP"],
+    "MEDIUM": _STATUS_COLORS["PARTIAL"],
+    "LOW": _STATUS_COLORS["UNKNOWN"],
+}
+
+
+FONT_DIR = Path(__file__).parent / "fonts"
+
+
+class _ReportPDF(FPDF):
+    """A typeset compliance report in the manner of a LaTeX article: Latin Modern
+    (Computer Modern) serif body, a centered title block, an abstract, numbered
+    sections, a booktabs-style summary table, justified text, and a captioned
+    figure. A small amount of color marks compliance status; the rest is black."""
+
+    fam = "Times"  # swapped for the embedded Latin Modern family when it loads
+
+    def header(self) -> None:
+        if self.page_no() == 1:
+            return
+        self.set_xy(self.l_margin, 12)
+        self.set_font(self.fam, "I", 8.5)
+        self.set_text_color(*MUTED)
+        self.cell(0, 5, _latin1("OMNIS  Compliance Evidence Report"))
+        self.cell(0, 5, _latin1(self._bench_line), align="R")
+        self._hrule(18, color=LINE, width=0.2)
+        self.set_y(25)
+
+    def footer(self) -> None:
+        self.set_y(-15)
+        self.set_font(self.fam, "", 9.5)
+        self.set_text_color(*INK)
+        self.cell(0, 6, _latin1(str(self.page_no())), align="C")
+
+    # --- drawing helpers -------------------------------------------------
+
+    def _hrule(self, y: float, color=INK, width: float = 0.2, x0=None, x1=None) -> None:
+        self.set_draw_color(*color)
+        self.set_line_width(width)
+        x0 = self.l_margin if x0 is None else x0
+        x1 = (self.w - self.r_margin) if x1 is None else x1
+        self.line(x0, y, x1, y)
+
+    def _section(self, number: str, title: str) -> None:
+        if self.get_y() > self.h - 40:
+            self.add_page()
+        self.ln(2)
+        self.set_font(self.fam, "B", 13)
+        self.set_text_color(*INK)
+        self.cell(0, 7, _latin1(f"{number}   {title}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.ln(1.5)
+
+    def _segmented_bar(self, x: float, y: float, w: float, h: float, segments: list) -> None:
+        """segments: list of (count, rgb). A thin distribution bar."""
+        total = sum(c for c, _ in segments) or 1
+        cx = x
+        gap = 0.7
+        for i, (count, rgb) in enumerate(segments):
+            seg_w = w * count / total
+            if seg_w <= 0:
+                continue
+            draw_w = seg_w - (gap if i < len(segments) - 1 else 0)
+            self.set_fill_color(*rgb)
+            self.rect(cx, y, max(draw_w, 0.5), h, style="F")
+            cx += seg_w
+
+
+def _booktabs(pdf: _ReportPDF, x: float, w: float, rows: list) -> None:
+    """A LaTeX booktabs-style table: thick top and bottom rules, a thin rule under
+    the header, no vertical lines."""
+    fam = pdf.fam
+    c1 = w * 0.62
+    c2 = w - c1
+    y = pdf.get_y()
+    pdf._hrule(y, INK, 0.5, x, x + w)
+    y += 1.6
+    pdf.set_xy(x, y)
+    pdf.set_font(fam, "B", 10)
+    pdf.set_text_color(*INK)
+    pdf.cell(c1, 6, _latin1("Metric"))
+    pdf.cell(c2, 6, _latin1("Value"), align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    y = pdf.get_y() + 0.4
+    pdf._hrule(y, INK, 0.25, x, x + w)
+    y += 1.6
+    for key, value in rows:
+        pdf.set_xy(x, y)
+        pdf.set_font(fam, "", 10)
+        pdf.cell(c1, 5.8, _latin1(key))
+        pdf.set_font(fam, "B", 10)
+        pdf.cell(c2, 5.8, _latin1(value), align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        y = pdf.get_y()
+    y += 0.6
+    pdf._hrule(y, INK, 0.5, x, x + w)
+    pdf.set_y(y + 3)
 
 
 def render_pdf(report: dict, path: str | Path) -> Path:
-    """Render the report dictionary to a PDF file and return its path."""
+    """Render the report dictionary to a typeset PDF file and return its path."""
     pdf = _ReportPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
+    pdf._generated = report["generated"]
+    pdf._bench_line = f"{report['bench']} bench"
+    try:
+        pdf.add_font("LMRoman", "", str(FONT_DIR / "lmroman10-regular.otf"))
+        pdf.add_font("LMRoman", "B", str(FONT_DIR / "lmroman10-bold.otf"))
+        pdf.add_font("LMRoman", "I", str(FONT_DIR / "lmroman10-italic.otf"))
+        pdf.fam = "LMRoman"
+    except Exception:
+        pdf.fam = "Times"  # core serif fallback so the engine never breaks offline
+    fam = pdf.fam
 
-    pdf.heading(report["title"], size=18)
-    pdf.body(f"Bench: {report['bench']}    Generated: {report['generated']}")
+    pdf.set_margins(24, 22, 24)
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+    left = pdf.l_margin
+    right = pdf.w - pdf.r_margin
+    width = right - left
+    es = report["executive_summary"]
+    sb = es["status_breakdown"]
+    idx = es["omniscience_index"]
+    nreq = es["total_requirements"]
+    status_str = ", ".join(f"{sb[s]} {s.lower()}" for s in _STATUS_ORDER if sb.get(s))
+
+    # --- title block -----------------------------------------------------
+    pdf.set_y(28)
+    pdf.set_font(fam, "B", 21)
+    pdf.set_text_color(*INK)
+    pdf.multi_cell(0, 9, _latin1("OMNIS Compliance Evidence Report"), align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(1)
+    pdf.set_font(fam, "I", 11.5)
+    pdf.set_text_color(*MUTED)
+    pdf.cell(0, 6, _latin1("the partly omniscient auditor"), align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(1.5)
+    pdf.set_font(fam, "", 10)
+    pdf.set_text_color(*INK)
+    pdf.cell(
+        0,
+        5,
+        _latin1(f"{report['bench']} bench    .    {nreq} requirements    .    generated {report['generated']}"),
+        align="C",
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
+    pdf.ln(4)
+    pdf._hrule(pdf.get_y(), color=INK, width=0.3, x0=left + 34, x1=right - 34)
+    pdf.ln(7)
+
+    # --- abstract --------------------------------------------------------
+    pdf.set_font(fam, "B", 10.5)
+    pdf.set_text_color(*INK)
+    pdf.cell(0, 5, _latin1("Abstract"), align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(1.5)
+    abstract = (
+        f"OMNIS parsed {nreq} requirements from the {report['bench']} policy set and linked "
+        f"{es['total_evidence']} evidence records against them. The Omniscience Index, a weighted "
+        f"composite of evidence coverage, freshness, and confidence, is {idx} out of 100, with an "
+        f"automation rate of {es['automation_rate']}%. {es['unmapped_count']} evidence records were "
+        f"left unmapped. The sections below give the per-requirement compliance status with its "
+        f"supporting evidence and freshness, followed by the data-quality findings OMNIS raised "
+        f"against the corpus itself."
+    )
+    indent = 12
+    pdf.set_x(left + indent)
+    pdf.set_font(fam, "", 9.8)
+    pdf.set_text_color(*INK)
+    pdf.multi_cell(width - 2 * indent, 5.1, _latin1(abstract), align="J", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(5)
+
+    # --- 1 executive summary --------------------------------------------
+    pdf._section("1", "Executive summary")
+    rows = [
+        ("Omniscience Index", f"{idx} / 100"),
+        ("Automation Rate", f"{es['automation_rate']}%"),
+        ("Requirements", str(nreq)),
+        ("Evidence records", str(es["total_evidence"])),
+        ("Unmapped evidence", str(es["unmapped_count"])),
+        ("Status breakdown", status_str or "none"),
+    ]
+    table_w = 122
+    _booktabs(pdf, left + (width - table_w) / 2, table_w, rows)
     pdf.ln(3)
 
-    es = report["executive_summary"]
-    pdf.heading("Executive summary", size=14)
-    pdf.body(
-        f"Omniscience Index: {es['omniscience_index']}/100\n"
-        f"Automation Rate: {es['automation_rate']}%\n"
-        f"Requirements: {es['total_requirements']}    "
-        f"Evidence records: {es['total_evidence']}    "
-        f"Unmapped: {es['unmapped_count']}\n"
-        f"Status breakdown: {es['status_breakdown']}"
+    # figure 1: status distribution, with a caption
+    bar_w = 122
+    bx = left + (width - bar_w) / 2
+    by = pdf.get_y()
+    segments = [(sb.get(s, 0), _STATUS_COLORS[s][0]) for s in _STATUS_ORDER]
+    pdf._segmented_bar(bx, by, bar_w, 3.4, segments)
+    pdf.set_y(by + 5)
+    pdf.set_font(fam, "I", 9)
+    pdf.set_text_color(*MUTED)
+    pdf.multi_cell(
+        0,
+        4.5,
+        _latin1(f"Figure 1.  Compliance status across {nreq} requirements ({status_str})."),
+        align="C",
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
     )
     pdf.ln(3)
 
-    pdf.heading("Requirements", size=14)
-    for r in report["requirements"]:
+    # --- 2 requirements --------------------------------------------------
+    pdf._section("2", "Requirements")
+    for i, r in enumerate(report["requirements"], start=1):
+        if pdf.get_y() > pdf.h - 44:
+            pdf.add_page()
         fr = r["freshness"]
-        pdf.heading(f"{r['requirement_id']}  [{r['status']}]", size=12)
-        pdf.body(
-            f"Policy: {r['policy_title']}    Confidence: {r['confidence']:.2f}\n"
-            f"Linked evidence: {len(r['evidence_ids'])} record(s)    "
-            f"Stale: {fr['stale_count']}/{fr['evidence_count']} "
-            f"(window {fr['window_days']}d)"
+        strong, _soft = _STATUS_COLORS.get(r["status"], _STATUS_COLORS["UNKNOWN"])
+        # run-in subsection heading: "2.i  REQ-ID   STATUS"
+        pdf.set_font(fam, "B", 10.5)
+        pdf.set_text_color(*INK)
+        head = f"2.{i}   {r['requirement_id']}"
+        pdf.cell(pdf.get_string_width(_latin1(head)) + 2.5, 5.6, _latin1(head))
+        pdf.set_text_color(*strong)
+        pdf.cell(0, 5.6, _latin1(r["status"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        # meta line, italic
+        pdf.set_font(fam, "I", 9)
+        pdf.set_text_color(*MUTED)
+        meta = (
+            f"{r['policy_title']}.  Confidence {r['confidence']:.2f}.  "
+            f"{len(r['evidence_ids'])} evidence records.  "
+            f"Stale {fr['stale_count']}/{fr['evidence_count']} (window {fr['window_days']} days)."
         )
-        pdf.body(r["narrative"])
-        pdf.body(f"Next step: {r['next_steps']}")
-        pdf.ln(2)
-
-    pdf.add_page()
-    pdf.heading("Appendix: corpus integrity findings", size=14)
-    if not report["integrity_findings"]:
-        pdf.body("No integrity findings.")
-    for f in report["integrity_findings"]:
-        pdf.heading(f"[{f['severity']}] {f['check_name']} (count {f['affected_count']})", size=11)
-        pdf.body(f["description"])
+        pdf.multi_cell(width, 4.4, _latin1(meta), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="J")
         pdf.ln(1)
+        # narrative, justified
+        pdf.set_font(fam, "", 10)
+        pdf.set_text_color(*INK)
+        pdf.multi_cell(width, 5.0, _latin1(r["narrative"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="J")
+        pdf.ln(1)
+        # next step, italic run-in label
+        prefix = "Next step.  "
+        pdf.set_font(fam, "I", 10)
+        pdf.set_text_color(*INK)
+        pw = pdf.get_string_width(_latin1(prefix))
+        pdf.cell(pw, 5.0, _latin1(prefix))
+        pdf.set_font(fam, "", 10)
+        pdf.multi_cell(width - pw, 5.0, _latin1(r["next_steps"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="J")
+        pdf.ln(5)
+
+    # --- 3 corpus integrity findings ------------------------------------
+    pdf._section("3", "Corpus integrity findings")
+    pdf.set_font(fam, "", 10)
+    pdf.set_text_color(*INK)
+    pdf.multi_cell(
+        width,
+        5.0,
+        _latin1(
+            "Data-quality issues OMNIS detected in the evidence corpus and reported, rather than "
+            "crashed on. Severity reflects audit impact."
+        ),
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+        align="J",
+    )
+    pdf.ln(3)
+    if not report["integrity_findings"]:
+        pdf.cell(0, 5, _latin1("No integrity findings."))
+    for i, f in enumerate(report["integrity_findings"], start=1):
+        if pdf.get_y() > pdf.h - 32:
+            pdf.add_page()
+        strong, _soft = _SEVERITY_COLORS.get(f["severity"], _STATUS_COLORS["UNKNOWN"])
+        pdf.set_font(fam, "B", 10.5)
+        pdf.set_text_color(*INK)
+        head = f"3.{i}   {f['check_name']}"
+        pdf.cell(pdf.get_string_width(_latin1(head)) + 2.5, 5.6, _latin1(head))
+        pdf.set_text_color(*strong)
+        pdf.cell(0, 5.6, _latin1(f["severity"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font(fam, "", 10)
+        pdf.set_text_color(*INK)
+        pdf.multi_cell(
+            width,
+            5.0,
+            _latin1(f"{f['affected_count']} rows. {f['description']}"),
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+            align="J",
+        )
+        pdf.ln(4)
 
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)

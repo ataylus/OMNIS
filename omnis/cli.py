@@ -52,30 +52,50 @@ BAR_PRECISION = 0.70
 BAR_RECALL = 0.60
 
 
+def _format_status(breakdown: dict) -> str:
+    order = ["COMPLIANT", "PARTIAL", "GAP", "UNKNOWN"]
+    parts = [f"{breakdown[s]} {s}" for s in order if breakdown.get(s)]
+    return " · ".join(parts) if parts else "none"
+
+
+def _card(title: str, rows: list[tuple[str, str]], width: int = 60) -> None:
+    """Print a compact bordered scorecard with the headline metrics."""
+    inner = width - 4
+    print("  ╭" + "─" * (width - 2) + "╮")
+    print("  │ " + title.ljust(inner) + " │")
+    print("  ├" + "─" * (width - 2) + "┤")
+    for label, value in rows:
+        print("  │ " + f"{label:<19}{value}".ljust(inner) + " │")
+    print("  ╰" + "─" * (width - 2) + "╯")
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     requirements = parse_policies(args.policies)
     records = load_evidence(args.evidence)
     findings = audit_corpus(records, requirements)
+    links = map_evidence(records, requirements)
+    scores, summary = score_corpus(requirements, records, links)
 
     print(f"Parsed {len(requirements)} requirements from {args.policies}")
     policy_ids = sorted({r.policy_id for r in requirements})
     print(f"Policies: {', '.join(policy_ids)}")
     print(f"Loaded {len(records)} evidence records from {args.evidence}")
     print()
+    _card(
+        "OMNIS  ·  compliance scorecard",
+        [
+            ("Omniscience Index", f"{summary.omniscience_index} / 100"),
+            ("Automation Rate", f"{summary.automation_rate} %"),
+            ("Status", _format_status(summary.status_breakdown)),
+            ("Integrity findings", str(len(findings))),
+        ],
+    )
+    print()
     print(f"Integrity findings: {len(findings)}")
     for f in findings:
         sample = f", sample: {', '.join(f.affected_ids)}" if f.affected_ids else ""
         print(f"  [{f.severity:<6}] {f.check_name} (count={f.affected_count}){sample}")
         print(f"           {f.description}")
-    print()
-    links = map_evidence(records, requirements)
-    scores, summary = score_corpus(requirements, records, links)
-    print(
-        f"Score summary: Omniscience Index {summary.omniscience_index}/100, "
-        f"Automation Rate {summary.automation_rate}%, "
-        f"unmapped {summary.unmapped_count}/{summary.total_evidence}, "
-        f"statuses {summary.status_breakdown}"
-    )
     return 0
 
 
@@ -229,20 +249,23 @@ DEFAULT_SCORE_OUT = Path("reports/score_latest.json")
 
 
 def _score_bench(
-    title: str, requirements, records, links_summary_out: dict, key: str
+    title: str, source: str, requirements, records, links_summary_out: dict, key: str
 ) -> None:
     links = map_evidence(records, requirements)
     scores, summary = score_corpus(requirements, records, links)
-    print(f"=== {title} ===")
-    print(
-        f"  Omniscience Index: {summary.omniscience_index}/100    "
-        f"Automation Rate: {summary.automation_rate}%"
+    _card(
+        f"OMNIS  ·  {title}",
+        [
+            ("Omniscience Index", f"{summary.omniscience_index} / 100"),
+            ("Automation Rate", f"{summary.automation_rate} %"),
+            ("Status", _format_status(summary.status_breakdown)),
+        ],
     )
+    print(f"  source: {source}")
     print(
-        f"  Evidence: {summary.total_evidence}   Unmapped: {summary.unmapped_count}   "
-        f"Mapping methods: {summary.method_breakdown}"
+        f"  evidence {summary.total_evidence}   unmapped {summary.unmapped_count}   "
+        f"methods {summary.method_breakdown}"
     )
-    print(f"  Status breakdown: {summary.status_breakdown}")
     print()
     print(f"  {'requirement':<16}{'status':<11}{'conf':>6}  {'evid':>5}  rationale")
     print("  " + "-" * 92)
@@ -264,14 +287,14 @@ def _cmd_score(args: argparse.Namespace) -> int:
 
     sample_records = load_evidence(args.evidence)
     _score_bench(
-        f"Provided sample ({args.evidence})", requirements, sample_records, payload, "provided_sample"
+        "provided sample", str(args.evidence), requirements, sample_records, payload, "provided_sample"
     )
 
     if SYNTHETIC_CSV.exists() and SYNTHETIC_IDS.exists():
         syn_requirements = parse_policies(SYNTHETIC_POLICIES)
         syn_records, _ = load_synthetic_bench(SYNTHETIC_CSV, SYNTHETIC_IDS)
         _score_bench(
-            f"Synthetic bench ({SYNTHETIC_CSV})", syn_requirements, syn_records, payload, "synthetic"
+            "synthetic bench", str(SYNTHETIC_CSV), syn_requirements, syn_records, payload, "synthetic"
         )
     else:
         print("Synthetic bench not found. Generate it with: python -m omnis synth")

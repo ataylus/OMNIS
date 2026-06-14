@@ -1,6 +1,14 @@
-# OMNIS
+<div align="center">
 
-### The partly omniscient auditor.
+# OMNIS
+**the partly omniscient auditor**
+
+![Python](https://img.shields.io/badge/python-3.10+-1f3a5f?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-97%20passing-1f7a4d?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-5f6b7a?style=flat-square)
+![Offline](https://img.shields.io/badge/runs-offline%20·%20no%20API%20key-1c1b19?style=flat-square)
+
+</div>
 
 A compliance evidence engine that reads security policies, matches evidence against them, tracks how fresh that evidence is, and tells you one honest number: how much it actually knows.
 
@@ -189,7 +197,7 @@ This is a proof of concept and it's honest about its edges. The evidence collect
 omnis/        the engine: ingest, integrity, mapping, freshness, scoring,
               detect, narrative, report, dashboard, evaluation, llm
 data/         provided sample + synthetic bench (6 policies, 15 requirements)
-docs/         edge cases, collectors, performance, hero image
+docs/         edge cases, collectors, performance, hero image, original brief
 notebooks/    the analysis end to end
 scripts/      label_signal_analysis.py
 tests/        97 tests, one suite per module

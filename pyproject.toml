@@ -35,6 +35,7 @@ packages = [
 
 [tool.setuptools.package-data]
 "omnis.dashboard" = ["static/*.html"]
+"omnis.report" = ["fonts/*.otf", "fonts/LICENSE-LatinModern.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
