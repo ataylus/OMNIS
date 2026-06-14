@@ -175,7 +175,7 @@ ID hidden, against a \textbf{6.7\%} random baseline. The full pipeline runs
 A bank has to prove it follows its own rules. Not just follow them, prove it, to an
 auditor who accepts nothing less than the receipt: the config file, the rotation log,
 the access report. Those receipts are scattered across systems, and a compliance team
-spends days per audit cycle hunting them down. A control can be working perfectly and
+spends more than 72 hours per audit cycle hunting them down. A control can be working perfectly and
 still fail the audit because nobody found the paperwork.
 
 OMNIS reads the policies, links each requirement to its evidence, tracks how fresh that
@@ -266,12 +266,13 @@ inputs (synthetic data, mock collectors) and the dormant LLM adapter.}
   defect classes the data contains: duplicate descriptions, orphan references, impossible
   date orders, freshness that disagrees with the dates, status that contradicts confidence.
 \item[\textcolor{navy}{mapping}] The layered linker (Section~\ref{sec:linking}).
-\item[\textcolor{navy}{freshness}] A decay model. Each requirement's audit frequency sets
-  its staleness window; evidence loses weight as it ages past that window.
+\item[\textcolor{navy}{freshness}] A decay model (Section~\ref{sec:freshness}). Each
+  requirement's audit frequency sets its staleness window; evidence loses weight as it ages
+  past that window.
 \item[\textcolor{navy}{scoring}] Per-requirement status and the headline roll-ups
   (Section~\ref{sec:scoring}).
 \item[\textcolor{navy}{detect}] A transparent rule-based anomaly classifier for evidence
-  records, targeting the five ground-truth classes.
+  records (Section~\ref{sec:detect}), targeting the five ground-truth classes.
 \item[\textcolor{navy}{narrative}] An auditor-voice explanation for each verdict,
   template-driven by default with an optional LLM enrichment path.
 \item[\textcolor{navy}{report}] The auditor-ready PDF and JSON (Section~\ref{sec:ui}).
@@ -306,6 +307,42 @@ text genuinely matches a requirement is linked, while generic or orphan-referenc
 evidence is left unmapped rather than forced onto the nearest requirement. Leaving weak
 evidence unmapped is the honest outcome and is exactly what the project's thesis demands.
 
+\subsection{Freshness decay}\label{sec:freshness}
+
+The brief names freshness a first-class feature, so it gets a model rather than a flat
+cutoff. Each requirement carries an audit frequency, and that frequency sets how long its
+evidence stays current:
+
+\begin{center}
+\sffamily\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Audit frequency & Window (days) \\
+\midrule
+Daily, Continuous & 1 \\
+Weekly & 7 \\
+Monthly & 30 \\
+Quarterly & 90 \\
+Unknown (fallback) & 90 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A record's freshness score decays exponentially, halving once per window:
+\[
+f \;=\; 0.5^{\,a / w},
+\]
+where $a$ is the record's age in days and $w$ is its audit-frequency window, which doubles
+as the decay half-life. A brand-new record scores 1.0, one a full window old scores 0.5,
+one three windows old scores about 0.125. A record whose age cannot be established scores
+0.0, because an unverifiable age cannot be claimed as fresh. A record older than its window
+without a fresh approval is reported stale.
+
+One detail matters for trust. The age comes from the record's \code{freshness\_days} field,
+not from subtracting dates, because the integrity auditor found the date columns internally
+inconsistent on 455 of 500 sample rows. Freshness is computed against a fixed reference date
+(2026-04-15), never wall-clock time, so every run and every test is reproducible.
+
 \subsection{Compliance scoring and the Omniscience Index}\label{sec:scoring}
 
 Each requirement is scored from its mapped evidence. A record is \emph{good} when it is
@@ -337,6 +374,27 @@ carries the highest weight because a requirement with no evidence cannot pass an
 all. Because $f_r$ and $q_r$ are zero when a requirement is uncovered, the Index degrades
 gracefully toward zero as coverage drops, rather than hiding gaps behind a high average.
 The Automation Rate is the share of evidence whose type is machine-collectable.
+
+\subsection{Anomaly detection}\label{sec:detect}
+
+The detector is a set of transparent rules, not a model, so every flag can be defended in a
+sentence. The rules run in a fixed priority order and the first match wins. The ordering
+encodes which signal is the most actionable when one record trips more than one rule.
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=2pt]
+\item \code{STALE\_EVIDENCE}: older than its window and not approved. A recent approval
+  re-establishes trust, so an old-but-approved record is deliberately not flagged.
+\item \code{COMPLIANCE\_GAP}: reviewed and rejected, so the control is not demonstrably met.
+\item \code{UNREVIEWED\_EVIDENCE}: sitting in pending review with no reviewer sign-off.
+\item \code{MISSING\_DOCUMENTATION}: approved on paper but carrying confidence below 0.6.
+\item \code{INCOMPLETE\_MAPPING}: cites a requirement ID that resolves to no real requirement.
+\end{enumerate}
+
+Each prediction returns its class, a plain-language reason, and a self-assessed confidence,
+so the report and the auditor see exactly why a record was flagged. Rules before a model was
+a deliberate choice: when the provided labels turned out to be noise
+(Section~\ref{sec:finding}), a rule you can defend was worth more than a model fit to
+randomness.
 
 % ===========================================================================
 \section{We audited the benchmark, and the benchmark failed}\label{sec:finding}
@@ -415,6 +473,27 @@ on its own, because the bench is labelled by the same rule logic the detector us
 is exactly why we add injected noise so a perfect score is impossible, keep the noisy
 provided sample as the primary real-world test, and grade the linker with the ID it
 relies on hidden. We would rather report a measured 54.7\% than a circular 100\%.
+
+The headline detection score also breaks down by class, so a single strong rule cannot hide
+a weak one. Every class clears the bar on its own:
+
+\begin{table}[H]
+\centering
+\sffamily\small
+\begin{tabularx}{\linewidth}{@{}Xllll@{}}
+\toprule
+Class & Precision & Recall & F1 & Support \\
+\midrule
+\code{COMPLIANCE\_GAP} & 0.970 & 0.941 & 0.955 & 68 \\
+\code{INCOMPLETE\_MAPPING} & 0.942 & 0.961 & 0.951 & 51 \\
+\code{MISSING\_DOCUMENTATION} & 0.977 & 0.956 & 0.966 & 45 \\
+\code{STALE\_EVIDENCE} & 0.930 & 0.930 & 0.930 & 43 \\
+\code{UNREVIEWED\_EVIDENCE} & 0.960 & 0.980 & 0.970 & 49 \\
+\bottomrule
+\end{tabularx}
+\caption{Per-class detection on the synthetic bench (\code{make eval}). The weakest class,
+\code{STALE\_EVIDENCE} at 0.930, still clears both bars comfortably.}
+\end{table}
 
 % ===========================================================================
 \section{The data, and the integrity auditor}
