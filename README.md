@@ -4,7 +4,7 @@
 **the partly omniscient auditor**
 
 ![Python](https://img.shields.io/badge/python-3.10+-1f3a5f?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-100%20passing-1f7a4d?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-102%20passing-1f7a4d?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-5f6b7a?style=flat-square)
 ![Offline](https://img.shields.io/badge/runs-offline%20·%20no%20API%20key-1c1b19?style=flat-square)
 
@@ -47,7 +47,7 @@ Two kinds of number matter here. What the product reports, and whether you shoul
 - **0.957 precision, 0.953 recall** detecting evidence anomalies on the synthetic bench. The bar was 0.70 and 0.60. (`make eval`)
 - **Evidence linking, hard-tested:** with the requirement ID hidden, the content layers recover the correct requirement **54.7%** of the time, 8x the 6.7% random baseline, and leave genuinely unmappable evidence unmapped rather than guessing. (`make eval`)
 - **Under 1 second** to run the full pipeline at the rubric's production scale: 500 requirements and 5,000 evidence records. The bar was 60. (`make perf`)
-- **100 tests**, all passing, one suite per module. (`make test`)
+- **102 tests**, all passing, one suite per module. (`make test`)
 
 The split is the whole philosophy. The Index is the answer; precision, recall, linking accuracy, and the tests are the receipt for the answer.
 
@@ -119,7 +119,7 @@ cd OMNIS
 pip install -r requirements.txt
 
 make demo      # dashboard at http://127.0.0.1:8000
-make test      # 100 tests
+make test      # 102 tests
 make analyze   # reproduce the label finding yourself
 ```
 
@@ -213,7 +213,7 @@ docs/         edge cases, collectors, performance, hero image, original brief,
               detailed/ (compiled LaTeX design documentation)
 notebooks/    the analysis end to end
 scripts/      label_signal_analysis.py
-tests/        100 tests, one suite per module
+tests/        102 tests, one suite per module
 ```
 
 ## License

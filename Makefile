@@ -11,7 +11,7 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*## "}; {printf "  \033[1m%-9s\033[0m %s\n", $$1, $$2}'
 	@printf "\n"
 
-test: ## Run the full test suite (97 tests)
+test: ## Run the full test suite (102 tests)
 	$(PYTHON) -m pytest
 
 eval: ## Score the detector vs ground truth (precision/recall/F1)
