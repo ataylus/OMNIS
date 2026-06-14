@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "omnis"
 version = "0.1.0"
 description = "OMNIS: a compliance evidence engine (the partly omniscient auditor)"
+authors = [{ name = "Ansh Jain" }]
+urls = { Repository = "https://github.com/ataylus/OMNIS" }
 requires-python = ">=3.10"
 dependencies = [
     "pandas==2.3.3",

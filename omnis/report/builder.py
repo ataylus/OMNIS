@@ -158,6 +158,10 @@ class _ReportPDF(FPDF):
 
     def footer(self) -> None:
         self.set_y(-15)
+        self.set_font(self.fam, "", 8)
+        self.set_text_color(*MUTED)
+        self.cell(0, 6, _latin1("Ansh Jain  |  github.com/ataylus"), align="L",
+                  new_x=XPos.LEFT, new_y=YPos.TOP)
         self.set_font(self.fam, "", 9.5)
         self.set_text_color(*INK)
         self.cell(0, 6, _latin1(str(self.page_no())), align="C")

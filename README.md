@@ -15,10 +15,11 @@ A compliance evidence engine that reads security policies, matches evidence agai
 ![OMNIS dashboard](docs/hero.png)
 
 > **Judges, start here (30 seconds):** `pip install -r requirements.txt`, then
-> `make demo` opens the dashboard, `make test` runs the 100 tests, and
+> `make demo` opens the dashboard, `make test` runs the 102 tests, and
 > `make analyze` reproduces the finding that the provided labels are noise. The
-> committed [reports/report.pdf](reports/report.pdf) is the auditor-ready output.
-> Everything runs offline with no API key.
+> committed [reports/report.pdf](reports/report.pdf) is the auditor-ready output, and
+> [docs/detailed/OMNIS_Documentation.pdf](docs/detailed/OMNIS_Documentation.pdf) is the
+> full design writeup (architecture, algorithms, results). Everything runs offline, no API key.
 
 ---
 
@@ -192,6 +193,8 @@ There is one LLM adapter, `omnis/llm.py`, with three modes set by `OMNIS_LLM_MOD
 
 The performance numbers above are measured with the LLM off. The model never sits on the critical path; it only enriches narrative prose when explicitly switched on. `data/llm_cache/` is not shipped and fills only on a deliberate live run.
 
+**Cost (estimate, not a bill).** Live mode targets Claude Haiku (~$1 per million input tokens, ~$5 per million output). One narrative enrichment is about 400 input + 150 output tokens, roughly **$0.0012 per requirement**: about **$0.02** to enrich all 15 synthetic requirements, and about **$0.58** even at the full 500-requirement scale. The adapter logs this estimate per call to `reports/llm_calls.jsonl`. We shipped with it off, so the real spend to date is $0.00.
+
 ## The notebook
 
 [notebooks/omnis_analysis.ipynb](notebooks/omnis_analysis.ipynb) walks the full story: sample exploration, the label-independence finding with charts, the mapping method breakdown, and the Index decomposed into its parts. It uses the same functions as the CLI and runs top to bottom offline.
@@ -206,7 +209,8 @@ This is a proof of concept and it's honest about its edges. The two evidence col
 omnis/        the engine: ingest, integrity, mapping, freshness, scoring,
               detect, narrative, report, dashboard, evaluation, collectors, llm
 data/         provided sample + synthetic bench + collector sample exports
-docs/         edge cases, collectors, performance, hero image, original brief
+docs/         edge cases, collectors, performance, hero image, original brief,
+              detailed/ (compiled LaTeX design documentation)
 notebooks/    the analysis end to end
 scripts/      label_signal_analysis.py
 tests/        100 tests, one suite per module
@@ -219,3 +223,4 @@ tests/        100 tests, one suite per module
 ---
 
 Built solo for the Societe Generale iHACK MYPLACE hackathon, PS3. Team: **Partly Everything.**
+Author: **Ansh Jain** ([github.com/ataylus](https://github.com/ataylus)).
