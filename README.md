@@ -19,7 +19,8 @@ A compliance evidence engine that reads security policies, matches evidence agai
 > `make analyze` reproduces the finding that the provided labels are noise. The
 > committed [reports/report.pdf](reports/report.pdf) is the auditor-ready output, and
 > [docs/detailed/OMNIS_Documentation.pdf](docs/detailed/OMNIS_Documentation.pdf) is the
-> full design writeup (architecture, algorithms, results). Everything runs offline, no API key.
+> full design writeup, and [docs/presentation/OMNIS_Presentation.pdf](docs/presentation/OMNIS_Presentation.pdf)
+> is the 5-minute slide deck. Everything runs offline, no API key.
 
 ---
 
@@ -210,7 +211,7 @@ omnis/        the engine: ingest, integrity, mapping, freshness, scoring,
               detect, narrative, report, dashboard, evaluation, collectors, llm
 data/         provided sample + synthetic bench + collector sample exports
 docs/         edge cases, collectors, performance, hero image, original brief,
-              detailed/ (compiled LaTeX design documentation)
+              detailed/ (design documentation), presentation/ (slide deck)
 notebooks/    the analysis end to end
 scripts/      label_signal_analysis.py
 tests/        102 tests, one suite per module
